@@ -1,17 +1,27 @@
 from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.config import settings
-from app.core.logger import logger
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from app.database import get_db  # <-- app.database olarak güncellendi
 
-# Swagger UI üzerindeki grup başlıkları ve açıklamaları
+from app.core.config import settings
+from app.core.logger import logger
+from app.database import get_db
+from app.api import departments, users  # Yeni eklenen router modülleri
+
+# Swagger UI grup başlıkları ve açıklamaları
 tags_metadata = [
     {
         "name": "General",
         "description": "Sistem durum kontrolü ve genel bilgi uç noktaları.",
+    },
+    {
+        "name": "Departments",
+        "description": "Departman oluşturma, listeleme ve detay görüntüleme işlemleri.",
+    },
+    {
+        "name": "Users",
+        "description": "Kullanıcı kayıt, listeleme ve departman atama işlemleri.",
     },
 ]
 
@@ -42,9 +52,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Router'ların Dahil Edilmesi
+app.include_router(departments.router, prefix="/departments", tags=["Departments"])
+app.include_router(users.router, prefix="/users", tags=["Users"])
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info(f"{settings.PROJECT_NAME} v{settings.VERSION} başlatıldı ({settings.ENVIRONMENT} ortamı).")
+
+
+# ==========================================
+# 📌 GENEL UÇ NOKTALAR (General Endpoints)
+# ==========================================
 
 @app.get("/", tags=["General"])
 def read_root():
@@ -55,6 +75,7 @@ def read_root():
         "status": "active"
     }
 
+
 @app.get("/health", tags=["General"])
 def health_check():
     logger.info("Sistem sağlık kontrolü (Health Check) gerçekleştirildi.")
@@ -64,6 +85,7 @@ def health_check():
         "version": settings.VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
 
 @app.get("/db-check", tags=["General"])
 def db_check(db: Session = Depends(get_db)):
