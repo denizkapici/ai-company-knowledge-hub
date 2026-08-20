@@ -7,13 +7,17 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.logger import logger
 from app.database import get_db
-from app.api import departments, users  # Yeni eklenen router modülleri
+from app.api import auth, departments, users  # Auth router'ı eklendi
 
 # Swagger UI grup başlıkları ve açıklamaları
 tags_metadata = [
     {
         "name": "General",
         "description": "Sistem durum kontrolü ve genel bilgi uç noktaları.",
+    },
+    {
+        "name": "Auth",
+        "description": "Kullanıcı girişi, JWT access token üretimi ve profil doğrulama işlemleri.",
     },
     {
         "name": "Departments",
@@ -53,6 +57,7 @@ app.add_middleware(
 )
 
 # Router'ların Dahil Edilmesi
+app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(departments.router, prefix="/departments", tags=["Departments"])
 app.include_router(users.router, prefix="/users", tags=["Users"])
 

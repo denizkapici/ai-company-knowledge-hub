@@ -1,20 +1,11 @@
-import hashlib
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from app import models, schemas
+from app.core.security import get_password_hash, verify_password
 
 
 # ==========================================
-# YARDIMCI GÜVENLİK FONKSİYONLARI
-# ==========================================
-
-def get_password_hash(password: str) -> str:
-    """Geçici parola hashleme (İlerleyen aşamada bcrypt/passlib entegre edilebilir)."""
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
-
-
-# ==========================================
-# DEPARTMAN CRUD İŞLEMLERİ
+# 🏢 DEPARTMAN CRUD İŞLEMLERİ
 # ==========================================
 
 def get_department_by_name(db: Session, name: str) -> Optional[models.Department]:
@@ -45,12 +36,17 @@ def create_department(db: Session, department: schemas.DepartmentCreate) -> mode
 
 
 # ==========================================
-# KULLANICI CRUD İŞLEMLERİ
+# 👤 KULLANICI & AUTH CRUD İŞLEMLERİ
 # ==========================================
 
 def get_user_by_email(db: Session, email: str) -> Optional[models.User]:
     """E-posta adresine göre kullanıcı arar."""
     return db.query(models.User).filter(models.User.email == email).first()
+
+
+def get_user_by_id(db: Session, user_id: int) -> Optional[models.User]:
+    """ID'ye göre kullanıcı arar."""
+    return db.query(models.User).filter(models.User.id == user_id).first()
 
 
 def get_users(db: Session, skip: int = 0, limit: int = 100) -> List[models.User]:
@@ -59,7 +55,7 @@ def get_users(db: Session, skip: int = 0, limit: int = 100) -> List[models.User]
 
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
-    """Yeni kullanıcı oluşturur ve şifresini hashleyerek kaydeder."""
+    """Yeni kullanıcı oluşturur ve parolasını Bcrypt ile hashleyerek kaydeder."""
     hashed_pwd = get_password_hash(user.password)
     db_user = models.User(
         name=user.name,
@@ -73,3 +69,13 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db.commit()
     db.refresh(db_user)
     return db_user
+
+
+def authenticate_user(db: Session, email: str, password: str) -> Optional[models.User]:
+    """Kullanıcının e-posta ve parola doğruluğunu kontrol eder."""
+    user = get_user_by_email(db, email=email)
+    if not user:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
+    return user
