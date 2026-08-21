@@ -1,7 +1,12 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, ConfigDict
+import enum
 
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    MANAGER = "manager"
+    EMPLOYEE = "employee"
 
 # ==========================================
 # DEPARTMAN ŞEMALARI (Department Schemas)
@@ -31,7 +36,7 @@ class DepartmentResponse(DepartmentBase):
 class UserBase(BaseModel):
     name: str
     email: EmailStr
-    role: Optional[str] = "employee"
+    role:UserRole = UserRole.EMPLOYEE
     is_active: Optional[bool] = True
     department_id: Optional[int] = None
 
@@ -61,7 +66,7 @@ class DepartmentDetailResponse(DepartmentResponse):
 
 class Token(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str 
 
 
 class TokenData(BaseModel):

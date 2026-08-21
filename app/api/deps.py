@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-
+from typing import List
 from app import crud, models, schemas
 from app.core.config import settings
 from app.database import get_db
@@ -40,3 +40,18 @@ def get_current_user(
             detail="Kullanıcı hesabı pasif durumda."
         )
     return user
+
+def require_role(allowed_roles: List[str]):
+    """
+    Belirli rollere sahip kullanıcıların endpoint'e erişmesini sağlayan dependency.
+    Yetkisiz erişimde 403 Forbidden hatası döner.
+    """
+    def role_checker(current_user: models.User = Depends(get_current_user)) -> models.User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Bu işlem için yetkiniz bulunmamaktadır. Gerekli rol: {', '.join(allowed_roles)}"
+            )
+        return current_user
+
+    return role_checker
