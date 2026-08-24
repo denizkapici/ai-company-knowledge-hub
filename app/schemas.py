@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, ConfigDict
+from app.models import DocumentStatus
 import enum
 
 class UserRole(str, enum.Enum):
@@ -71,3 +72,27 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+
+# Tüm şemaların atası (Ortak alanlar)
+class DocumentBase(BaseModel):
+    title: str
+    file_path: str
+    file_size: int
+    mime_type: str
+    status: DocumentStatus = DocumentStatus.pending
+
+# Kullanıcı yeni doküman eklerken kullanılacak şema
+class DocumentCreate(DocumentBase):
+    department_id: Optional[int] = None
+    
+# API'den kullanıcıya cevap olarak dönecek şema
+class DocumentResponse(DocumentBase):
+    id: int
+    department_id: Optional[int]
+    uploaded_by: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True  # SQLAlchemy objesini JSON'a çevirmeyi sağlar
