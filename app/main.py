@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.logger import logger
 from app.database import get_db
 from app.api import auth, departments, users  # Auth router'ı eklendi
+from app.api.documents import router as documents_router
 
 # Swagger UI grup başlıkları ve açıklamaları
 tags_metadata = [
@@ -60,7 +61,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(departments.router, prefix="/departments", tags=["Departments"])
 app.include_router(users.router, prefix="/users", tags=["Users"])
-
+app.include_router(documents_router)
 
 @app.on_event("startup")
 async def startup_event():
