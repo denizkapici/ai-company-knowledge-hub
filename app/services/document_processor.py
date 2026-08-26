@@ -1,45 +1,49 @@
-import asyncio
 import logging
-from app.database import SessionLocal
+from sqlalchemy.orm import Session
 from app.models import Document, DocumentStatus
+from app.database import SessionLocal
+from app.services.text_extractor import extract_content  
 
 logger = logging.getLogger(__name__)
 
-
-async def process_document_pipeline(document_id: int) -> None:
-    """
-    Arka planda çalışacak doküman işleme pipeline'ı.
-    Yarınki (8. Gün) metin çıkarma ve embedding adımları buraya bağlanacaktır.
-    """
-    logger.info("Doküman işleme başladı | ID: %d", document_id)
-
-    db = SessionLocal()
+async def process_document_pipeline(document_id: int):
+    db: Session = SessionLocal()
+    
     try:
+
         doc = db.query(Document).filter(Document.id == document_id).first()
         if not doc:
-            logger.error("Doküman bulunamadı | ID: %d", document_id)
+            logger.error("Doküman bulunamadı | ID: %s", document_id)
             return
 
-        # 1. Durumu PROCESSING yap
+       
         doc.status = DocumentStatus.processing
         db.commit()
-        logger.info("Doküman durumu güncellendi: PROCESSING | ID: %d", document_id)
+        logger.info("Doküman işlenmeye başlandı | ID: %s", document_id)
 
-        # İşlem simülasyonu (8. Günde buraya metin çıkarma fonksiyonu gelecek)
-        await asyncio.sleep(2)
 
-        # 2. İşlem tamamlandı: Durumu COMPLETED yap
+        extracted_text = await extract_content(file_path=doc.file_path, mime_type=doc.mime_type)
+        
+       
+        logger.info("Çıkarılan net metin boyutu | ID: %s | Karakter: %d", document_id, len(extracted_text))
+        
+
+
+        
         doc.status = DocumentStatus.completed
         db.commit()
-        logger.info("Doküman işleme tamamlandı: COMPLETED | ID: %d", document_id)
+        logger.info("Doküman işleme başarıyla tamamlandı | ID: %s", document_id)
 
     except Exception as e:
         db.rollback()
-        logger.error("Doküman işleme hatası | ID: %d | Hata: %s", document_id, str(e), exc_info=True)
-        # Hata durumunda statüyü FAILED yap
-        doc = db.query(Document).filter(Document.id == document_id).first()
-        if doc:
-            doc.status = DocumentStatus.failed
+        logger.error("Arka plan işleminde hata | ID: %s | Hata: %s", document_id, str(e), exc_info=True)
+        
+        
+        failed_doc = db.query(Document).filter(Document.id == document_id).first()
+        if failed_doc:
+            failed_doc.status = DocumentStatus.failed
             db.commit()
+            
     finally:
+       
         db.close()
