@@ -14,32 +14,54 @@ from app import crud
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
+# ==========================================
+# 🛡️ GÜVENLİK SINIRLARI (HARD LIMITS)
+# ==========================================
+MAX_FILE_SIZE_MB = 20  # Maksimum dosya boyutu (20 MB)
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+
+
 # --- 1. ASENKRON DOKÜMAN YÜKLEME ---
 @router.post(
     "/upload",
     response_model=DocumentResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Asenkron Doküman Yükleme"
+    summary="Asenkron Doküman Yükleme (Limit Korumalı)"
 )
 async def upload_document(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(..., description="Yüklenecek belge (PDF, DOCX, TXT, MD)"),
+    file: UploadFile = File(..., description=f"Yüklenecek belge (Maks {MAX_FILE_SIZE_MB}MB - PDF, DOCX, TXT, MD)"),
     title: str = Form(None, description="Doküman başlığı (Opsiyonel, verilmezse dosya adı kullanılır)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Belirtilen dosyayı doğrular, güvenli şekilde diske kaydeder,
-    veritabanında 'PENDING' durumunda kayıt açar ve arka planda
-    işleme pipeline'ını tetikleyerek anında 202 Accepted döner.
+    Belirtilen dosyayı boyut ve uzantı limitlerine göre doğrular,
+    güvenli şekilde diske kaydeder ve arka plan işlemine gönderir.
     """
-    # 1. Dosyayı doğrula ve kaydet (file_service 3 değer dönüyor)
+    # 1. UZANTI (EXTENSION) KONTROLÜ
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Desteklenmeyen dosya türü! Sadece şu formatlara izin verilmektedir: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    # 2. BOYUT (SIZE) KONTROLÜ (FastAPI file.size okuması)
+    if file.size and file.size > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Dosya boyutu çok büyük! Maksimum izin verilen boyut: {MAX_FILE_SIZE_MB} MB."
+        )
+
+    # 3. Dosyayı doğrula ve kaydet (file_service 3 değer dönüyor)
     file_path, file_size, real_mime = await save_upload_file(file)
 
-    # 2. Başlık belirtilmemişse orijinal dosya adını kullan
+    # 4. Başlık belirtilmemişse orijinal dosya adını kullan
     doc_title = title if title else (file.filename or "Adsız Doküman")
 
-    # 3. Veritabanına PENDING durumunda ekle
+    # 5. Veritabanına PENDING durumunda ekle
     new_doc = Document(
         title=doc_title,
         file_path=file_path,
@@ -53,7 +75,7 @@ async def upload_document(
     db.commit()
     db.refresh(new_doc)
 
-    # 4. Arka plan görevini kuyruğa ekle
+    # 6. Arka plan görevini kuyruğa ekle
     background_tasks.add_task(process_document_pipeline, new_doc.id)
 
     return new_doc

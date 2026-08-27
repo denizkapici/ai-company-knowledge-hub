@@ -1,0 +1,12 @@
+2026-08-27 16:12:06 | INFO     | app.core.logger:33 - 🚀 AI Company Knowledge Hub Loglama Sistemi Başlatıldı!
+2026-08-27 16:12:06 | INFO     | app.main:104 - AI Company Knowledge Hub v1.0.0 başlatıldı (development ortamı).
+2026-08-27 16:12:12 | INFO     | app.main:79 - 127.0.0.1 - GET /docs - Durum: 200 - Süre: 0.00ms
+2026-08-27 16:12:12 | INFO     | app.main:79 - 127.0.0.1 - GET /openapi.json - Durum: 200 - Süre: 97.63ms
+2026-08-27 16:12:25 | INFO     | app.main:123 - Sistem sağlık kontrolü (Health Check) gerçekleştirildi.
+2026-08-27 16:12:25 | INFO     | app.main:79 - 127.0.0.1 - GET /health - Durum: 200 - Süre: 0.00ms
+2026-08-27 16:13:12 | INFO     | app.main:113 - Kök endpoint'e istek geldi.
+2026-08-27 16:13:12 | INFO     | app.main:79 - 127.0.0.1 - GET / - Durum: 200 - Süre: 2.47ms
+2026-08-27 16:13:13 | INFO     | app.main:113 - Kök endpoint'e istek geldi.
+2026-08-27 16:13:13 | INFO     | app.main:79 - 127.0.0.1 - GET / - Durum: 200 - Süre: 0.80ms
+2026-08-27 16:13:22 | INFO     | app.main:137 - Veritabanı bağlantı testi başarılı.
+2026-08-27 16:13:22 | INFO     | app.main:79 - 127.0.0.1 - GET /db-check - Durum: 200 - Süre: 165.49ms

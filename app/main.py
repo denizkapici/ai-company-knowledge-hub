@@ -1,14 +1,22 @@
+import time
 from datetime import datetime, timezone
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request  # YENİ: Request eklendi
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.core.logger import logger
+from app.core.logger import logger, setup_logging  # YENİ: setup_logging eklendi
 from app.database import get_db
-from app.api import auth, departments, users  # Auth router'ı eklendi
+from app.api import auth, departments, users
 from app.api.documents import router as documents_router
+
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+from app.core.limiter import limiter
+
+# YENİ: Uygulama başlarken logları yapılandır
+setup_logging()
 
 # Swagger UI grup başlıkları ve açıklamaları
 tags_metadata = [
@@ -47,6 +55,34 @@ app = FastAPI(
         "name": "Proprietary / Corporate",
     },
 )
+
+# Rate Limiting (SlowAPI) Yapılandırması
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# ==========================================
+# 🛡️ YENİ: TÜM İSTEKLERİ KAYDEDEN MIDDLEWARE
+# ==========================================
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    
+    # İstek işleniyor...
+    response = await call_next(request)
+    
+    # Ne kadar sürdü?
+    process_time = (time.time() - start_time) * 1000
+    
+    # Bize kim, nereye, hangi yöntemle geldi ve ne cevap verdik?
+    client_ip = request.client.host if request.client else "Bilinmiyor"
+    logger.info(
+        f"{client_ip} - {request.method} {request.url.path} - "
+        f"Durum: {response.status_code} - Süre: {process_time:.2f}ms"
+    )
+    
+    return response
+
 
 # CORS yapılandırması
 app.add_middleware(

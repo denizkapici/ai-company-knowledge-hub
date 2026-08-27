@@ -1,5 +1,5 @@
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -8,12 +8,15 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.database import get_db
+from app.core.limiter import limiter  # YENİ: Limiter modülü içeri aktarıldı
 
 router = APIRouter()
 
 
 @router.post("/login", response_model=schemas.Token)
+@limiter.limit("5/minute")  # YENİ: Bir IP adresi dakikada en fazla 5 kez istek atabilir!
 def login_for_access_token(
+    request: Request,  # YENİ: SlowAPI'nin istek atan kişinin IP'sini görebilmesi için eklendi
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
