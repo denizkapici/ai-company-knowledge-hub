@@ -2,6 +2,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.core.security import get_password_hash, verify_password
+from app.models import Document, User
 
 
 # ==========================================
@@ -79,3 +80,47 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
     if not verify_password(password, user.hashed_password):
         return None
     return user
+
+
+# ==========================================
+# 📄 DOKÜMAN CRUD İŞLEMLERİ (GÜVENLİ)
+# ==========================================
+
+# --- DOKÜMAN LİSTELEME VE FİLTRELEME (DEPARTMAN BAZLI) ---
+def get_documents_by_department(
+    db: Session, 
+    department_id: int, 
+    skip: int = 0, 
+    limit: int = 50,
+    search_title: Optional[str] = None,
+    status_filter: Optional[str] = None
+) -> List[Document]:
+    """
+    Kullanıcının sadece kendi departmanına ait dokümanları getirir.
+    İsteğe bağlı olarak başlık (title) ve durum (status) bazlı arama/filtreleme yapar.
+    """
+    # DÜZELTME: owner_id yerine uploaded_by kullanıldı!
+    query = db.query(Document).join(User, Document.uploaded_by == User.id).filter(User.department_id == department_id)
+
+    # Arama Motoru: Başlıkta geçen kelimeye göre filtreleme (Büyük/küçük harf duyarsız)
+    if search_title:
+        query = query.filter(Document.title.ilike(f"%{search_title}%"))
+        
+    # Durum Filtresi: Sadece PENDING, PROCESSED veya FAILED olanları getir
+    if status_filter:
+        query = query.filter(Document.status == status_filter)
+
+    # Sayfalama (Pagination) ekleyerek sonuçları döndür
+    return query.offset(skip).limit(limit).all()
+
+
+# --- TEKİL DOKÜMAN GETİRME (GÜVENLİ İNDİRME/SİLME İÇİN) ---
+def get_document_by_id_and_department(db: Session, document_id: int, department_id: int) -> Optional[Document]:
+    """
+    Güvenlik Kontrolü: Kullanıcı bir dosyayı indirmek veya silmek istediğinde çalışır.
+    Eğer dosya ID'si veritabanında olsa bile, kullanıcının departmanına ait değilse None döner.
+    """
+    # DÜZELTME: owner_id yerine uploaded_by kullanıldı!
+    return db.query(Document).join(User, Document.uploaded_by == User.id)\
+             .filter(Document.id == document_id, User.department_id == department_id)\
+             .first()
