@@ -1,9 +1,13 @@
 import time
+import uuid
 from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException, Request  # YENİ: Request eklendi
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
 from app.core.logger import logger, setup_logging  # YENİ: setup_logging eklendi
@@ -14,6 +18,7 @@ from app.api.documents import router as documents_router
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from app.core.limiter import limiter
+from app.core.exceptions import AppException
 
 # YENİ: Uygulama başlarken logları yapılandır
 setup_logging()
@@ -66,23 +71,103 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # ==========================================
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    # 1. Bu isteğe özel benzersiz bir Trace ID oluştur (Örn: 550e8400-e29b...)
+    trace_id = str(uuid.uuid4())
+    
+    # 2. Bu ID'yi 'request'in içine sakla (Birazdan Hata Yakalayıcılar oradan alacak)
+    request.state.trace_id = trace_id
+    
     start_time = time.time()
     
     # İstek işleniyor...
     response = await call_next(request)
     
-    # Ne kadar sürdü?
-    process_time = (time.time() - start_time) * 1000
+    # 3. İşlem bittikten sonra, dönen cevabın başlığına (Header) Trace ID'yi ekle
+    # (Böylece Frontend/Mobil geliştiriciler bu ID'yi okuyabilir)
+    response.headers["X-Trace-ID"] = trace_id
     
-    # Bize kim, nereye, hangi yöntemle geldi ve ne cevap verdik?
+    process_time = (time.time() - start_time) * 1000
     client_ip = request.client.host if request.client else "Bilinmiyor"
+    
+    # 4. Log dosyasına yazarken artık Trace ID ile birlikte yazıyoruz!
     logger.info(
-        f"{client_ip} - {request.method} {request.url.path} - "
+        f"[TraceID: {trace_id}] {client_ip} - {request.method} {request.url.path} - "
         f"Durum: {response.status_code} - Süre: {process_time:.2f}ms"
     )
     
     return response
 
+# ==========================================
+# 🚨 GLOBAL EXCEPTION HANDLERS (HATA YAKALAYICILAR)
+# ==========================================
+
+@app.exception_handler(AppException)
+async def custom_app_exception_handler(request: Request, exc: AppException):
+    """Bizim yazdığımız özel hataları (DocumentNotFoundError vb.) yakalar ve standart JSON döner."""
+    trace_id = getattr(request.state, "trace_id", "Bilinmiyor")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error_code": exc.error_code,
+            "message": exc.message,
+            "detail": exc.detail,
+            "trace_id": trace_id
+        }
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Kullanıcının gönderdiği eksik veya yanlış verileri (422) yakalayıp temiz bir formata sokar."""
+    trace_id = getattr(request.state, "trace_id", "Bilinmiyor")
+    # Pydantic'in karmaşık hatalarını daha okunabilir hale getirelim
+    errors = [{"field": e["loc"][-1], "msg": e["msg"]} for e in exc.errors()]
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error_code": "VALIDATION_ERROR",
+            "message": "Gönderilen verilerde format veya doğrulama hatası var.",
+            "detail": errors,
+            "trace_id": trace_id
+        }
+    )
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """FastAPI'nin kendi standart HTTPException'larını (401, 404 vb.) bizim şablona uydurur."""
+    trace_id = getattr(request.state, "trace_id", "Bilinmiyor")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error_code": "HTTP_ERROR",
+            "message": "İşlem sırasında bir hata oluştu.",
+            "detail": exc.detail,
+            "trace_id": trace_id
+        }
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    SİSTEM ÇÖKMESİ (500) YAKALAYICI:
+    Kodda öngörülemeyen bir hata (veritabanı kopması, kod bug'ı vb.) olduğunda devreye girer.
+    Kullanıcıya teknik detay GÖSTERMEZ (Güvenlik), ama hatanın TAMAMINI Trace ID ile loga yazar.
+    """
+    trace_id = getattr(request.state, "trace_id", "Bilinmiyor")
+    
+    # Hatanın tüm detaylarını (Stack Trace) kara kutuya yaz
+    logger.error(f"[TraceID: {trace_id}] Beklenmeyen Sistem Hatası: {str(exc)}")
+    logger.exception(exc) # Bu satır hatanın hangi satırda patladığını gösterir
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error_code": "INTERNAL_SERVER_ERROR",
+            "message": "Sunucu tarafında beklenmeyen bir hata oluştu. Lütfen teknik ekiple iletişime geçin.",
+            "detail": "Kritik sistem hatası.",
+            "trace_id": trace_id
+        }
+    )
 
 # CORS yapılandırması
 app.add_middleware(

@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks, status, HTTPException, Query
+from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -11,6 +11,14 @@ from app.api.deps import get_current_user
 from app.services.file_service import save_upload_file
 from app.services.document_processor import process_document_pipeline
 from app import crud
+
+# YENİ: Özel Hata Sınıflarımızı İçeri Aktarıyoruz
+from app.core.exceptions import (
+    DocumentNotFoundError, 
+    DepartmentNotMatchError, 
+    InvalidFileTypeError, 
+    FileSizeLimitExceededError
+)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -43,19 +51,19 @@ async def upload_document(
     # 1. UZANTI (EXTENSION) KONTROLÜ
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        # TERTEMİZ HATA FIRLATMA
+        raise InvalidFileTypeError(
             detail=f"Desteklenmeyen dosya türü! Sadece şu formatlara izin verilmektedir: {', '.join(ALLOWED_EXTENSIONS)}"
         )
 
-    # 2. BOYUT (SIZE) KONTROLÜ (FastAPI file.size okuması)
+    # 2. BOYUT (SIZE) KONTROLÜ
     if file.size and file.size > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        # TERTEMİZ HATA FIRLATMA
+        raise FileSizeLimitExceededError(
             detail=f"Dosya boyutu çok büyük! Maksimum izin verilen boyut: {MAX_FILE_SIZE_MB} MB."
         )
 
-    # 3. Dosyayı doğrula ve kaydet (file_service 3 değer dönüyor)
+    # 3. Dosyayı doğrula ve kaydet
     file_path, file_size, real_mime = await save_upload_file(file)
 
     # 4. Başlık belirtilmemişse orijinal dosya adını kullan
@@ -126,18 +134,14 @@ def download_document(
         department_id=current_user.department_id
     )
     
-    # Eğer belge yoksa veya BAŞKA BİR DEPARTMANA aitse, 403 fırlat
+    # Eğer belge yoksa veya BAŞKA BİR DEPARTMANA aitse
     if not document:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bu doküman bulunamadı veya erişim yetkiniz yok!"
-        )
+        raise DepartmentNotMatchError(detail="Bu doküman bulunamadı veya indirmek için erişim yetkiniz yok!")
     
     # Dosyanın diskte gerçekten var olup olmadığını kontrol et
     if not os.path.exists(document.file_path):
-         raise HTTPException(status_code=404, detail="Fiziksel dosya diskte bulunamadı.")
+         raise DocumentNotFoundError(detail="Fiziksel dosya diskte bulunamadı, muhtemelen silinmiş.")
     
-    # FastAPI'nin dosya döndürme sınıfı (Tarayıcı direkt indirir)
     return FileResponse(
         path=document.file_path, 
         filename=document.title,
@@ -167,10 +171,7 @@ def delete_document(
     )
     
     if not document:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Silmek istediğiniz doküman bulunamadı veya buna yetkiniz yok!"
-        )
+        raise DepartmentNotMatchError(detail="Silmek istediğiniz doküman bulunamadı veya buna yetkiniz yok!")
         
     # 1. Fiziksel dosyayı diskten sil (Yer tasarrufu ve temizlik)
     if os.path.exists(document.file_path):
@@ -180,4 +181,4 @@ def delete_document(
     db.delete(document)
     db.commit()
     
-    return # 204 No Content başarılı silme işleminde veri döndürmez
+    return

@@ -1,0 +1,17 @@
+2026-08-28 10:18:12 | INFO     | app.core.logger:33 - 🚀 AI Company Knowledge Hub Loglama Sistemi Başlatıldı!
+2026-08-28 10:18:12 | INFO     | app.main:189 - AI Company Knowledge Hub v1.0.0 başlatıldı (development ortamı).
+2026-08-28 10:22:23 | INFO     | app.core.logger:33 - 🚀 AI Company Knowledge Hub Loglama Sistemi Başlatıldı!
+2026-08-28 10:22:23 | INFO     | app.main:189 - AI Company Knowledge Hub v1.0.0 başlatıldı (development ortamı).
+2026-08-28 15:09:05 | INFO     | app.core.logger:33 - 🚀 AI Company Knowledge Hub Loglama Sistemi Başlatıldı!
+2026-08-28 15:09:05 | INFO     | app.main:198 - Kök endpoint'e istek geldi.
+2026-08-28 15:09:05 | INFO     | app.main:93 - [TraceID: cdc86e8c-7134-4159-9aad-0cabeadc5e16] testclient - GET / - Durum: 200 - Süre: 60.86ms
+2026-08-28 15:09:05 | INFO     | app.main:93 - [TraceID: a8745d24-22b0-46d5-a5d4-e57a3f10750c] testclient - POST /auth/login - Durum: 422 - Süre: 17.66ms
+2026-08-28 15:09:05 | INFO     | app.main:93 - [TraceID: baa48d5a-19ea-4cce-abc5-abefa49625ec] testclient - GET /documents/ - Durum: 401 - Süre: 4.11ms
+2026-08-28 15:18:03 | INFO     | app.core.logger:33 - 🚀 AI Company Knowledge Hub Loglama Sistemi Başlatıldı!
+2026-08-28 15:18:03 | INFO     | app.main:189 - AI Company Knowledge Hub v1.0.0 başlatıldı (development ortamı).
+2026-08-28 15:18:14 | INFO     | app.main:93 - [TraceID: 087c2671-9d0c-40ff-b614-cdfd84be97c5] 127.0.0.1 - GET /openapi.json - Durum: 200 - Süre: 79.03ms
+2026-08-28 15:18:14 | INFO     | app.main:93 - [TraceID: f931fecd-48b8-4ec1-8aec-193e0e059b35] 127.0.0.1 - GET /favicon.ico - Durum: 404 - Süre: 0.00ms
+2026-08-28 15:49:23 | INFO     | app.core.logger:33 - 🚀 AI Company Knowledge Hub Loglama Sistemi Başlatıldı!
+2026-08-28 15:49:24 | INFO     | app.main:93 - [TraceID: b6b6487c-9946-43b5-bc94-de223b2fc23e] testclient - POST /auth/login - Durum: 401 - Süre: 615.71ms
+2026-08-28 15:49:24 | INFO     | app.main:198 - Kök endpoint'e istek geldi.
+2026-08-28 15:49:24 | INFO     | app.main:93 - [TraceID: 1050a2b6-858b-4a73-a10a-cd4389632c70] testclient - GET / - Durum: 200 - Süre: 12.62ms

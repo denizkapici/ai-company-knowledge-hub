@@ -10,3 +10,17 @@
 2026-08-27 16:13:13 | INFO     | app.main:79 - 127.0.0.1 - GET / - Durum: 200 - Süre: 0.80ms
 2026-08-27 16:13:22 | INFO     | app.main:137 - Veritabanı bağlantı testi başarılı.
 2026-08-27 16:13:22 | INFO     | app.main:79 - 127.0.0.1 - GET /db-check - Durum: 200 - Süre: 165.49ms
+2026-08-27 16:38:49 | INFO     | app.core.logger:33 - 🚀 AI Company Knowledge Hub Loglama Sistemi Başlatıldı!
+2026-08-27 16:38:49 | INFO     | app.main:104 - AI Company Knowledge Hub v1.0.0 başlatıldı (development ortamı).
+2026-08-27 16:38:55 | INFO     | app.main:79 - 127.0.0.1 - GET /docs - Durum: 200 - Süre: 0.84ms
+2026-08-27 16:38:55 | INFO     | app.main:79 - 127.0.0.1 - GET /openapi.json - Durum: 200 - Süre: 74.42ms
+2026-08-27 16:44:52 | INFO     | app.main:79 - 127.0.0.1 - POST /documents/upload - Durum: 401 - Süre: 167.97ms
+2026-08-27 16:46:18 | INFO     | app.main:79 - 127.0.0.1 - POST /auth/login - Durum: 200 - Süre: 529.64ms
+2026-08-27 16:46:33 | INFO     | app.main:79 - 127.0.0.1 - POST /documents/upload - Durum: 413 - Süre: 134.60ms
+2026-08-27 16:46:47 | INFO     | app.main:79 - 127.0.0.1 - GET /docs - Durum: 200 - Süre: 0.00ms
+2026-08-27 16:46:47 | INFO     | app.main:79 - 127.0.0.1 - GET /openapi.json - Durum: 200 - Süre: 1.30ms
+2026-08-27 16:47:16 | INFO     | app.main:79 - 127.0.0.1 - POST /documents/upload - Durum: 401 - Süre: 193.15ms
+2026-08-27 16:47:33 | INFO     | app.main:79 - 127.0.0.1 - GET /docs - Durum: 200 - Süre: 0.00ms
+2026-08-27 16:47:33 | INFO     | app.main:79 - 127.0.0.1 - GET /openapi.json - Durum: 200 - Süre: 1.16ms
+2026-08-27 16:47:54 | INFO     | app.main:79 - 127.0.0.1 - POST /auth/login - Durum: 200 - Süre: 423.55ms
+2026-08-27 16:48:15 | INFO     | app.main:79 - 127.0.0.1 - POST /documents/upload - Durum: 413 - Süre: 173.73ms
