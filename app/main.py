@@ -19,6 +19,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from app.core.limiter import limiter
 from app.core.exceptions import AppException
+from app.services.rag_service import rag_service
 
 # YENİ: Uygulama başlarken logları yapılandır
 setup_logging()

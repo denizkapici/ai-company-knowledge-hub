@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict,Field
 from app.models import DocumentStatus
 import enum
 
@@ -96,3 +96,31 @@ class DocumentResponse(DocumentBase):
 
     class Config:
         from_attributes = True  # SQLAlchemy objesini JSON'a çevirmeyi sağlar
+
+
+# ==========================================
+# YAPAY ZEKA (RAG) ŞEMALARI
+# ==========================================
+
+class DocumentChunk(BaseModel):
+    # Metnin kendisi
+    page_content: str = Field(..., description="Bölünmüş metin parçasının kendisi (Chunk)")
+    
+    # Metadata (Kimlik Bilgileri)
+    document_id: int = Field(..., description="Bu parçanın ait olduğu orijinal dokümanın ID'si")
+    page_number: int = Field(..., description="Metnin bulunduğu sayfa numarası")
+    department_id: Optional[int] = Field(None, description="Dokümanın ait olduğu departman ID'si (Erişim yetkisi için)")
+    chunk_index: int = Field(..., description="Bu parçanın doküman içindeki sıra numarası")
+
+    # Pydantic v2 standartlarında örnek veri gösterimi
+    model_config = ConfigDict(
+        json_schema_extra = {
+            "example": {
+                "page_content": "Şirketimizin yıllık izin prosedürü gereği, çalışanlar...",
+                "document_id": 5,
+                "page_number": 12,
+                "department_id": 2,
+                "chunk_index": 45
+            }
+        }
+    )
