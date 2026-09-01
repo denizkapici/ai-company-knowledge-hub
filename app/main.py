@@ -1,7 +1,9 @@
 import time
 import uuid
+import shutil
+import os
 from datetime import datetime, timezone
-from fastapi import FastAPI, Depends, HTTPException, Request  # YENİ: Request eklendi
+from fastapi import FastAPI, Depends, HTTPException, Request  ,UploadFile, File, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -20,6 +22,8 @@ from slowapi import _rate_limit_exceeded_handler
 from app.core.limiter import limiter
 from app.core.exceptions import AppException
 from app.services.rag_service import rag_service
+from app.services.vector_service import vector_service
+from app.schemas import DocumentUploadResponse
 
 # YENİ: Uygulama başlarken logları yapılandır
 setup_logging()
@@ -229,3 +233,19 @@ def db_check(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Veritabanı bağlantı hatası: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Veritabanı hatası: {str(e)}")
+
+
+
+@app.get("/api/v1/documents/db-check", tags=["AI Test"])
+async def check_database():
+    """
+    ChromaDB'ye kaydedilmiş son metinleri getirerek sansür (PII) kontrolü yapmamızı sağlar.
+    """
+    # Veritabanındaki ilk 5 parçayı çek
+    data = vector_service.collection.get(limit=5)
+    
+    return {
+        "veritabani_durumu": "Aktif",
+        "toplam_kayit": len(data["documents"]),
+        "kaydedilen_metinler": data["documents"]
+    }

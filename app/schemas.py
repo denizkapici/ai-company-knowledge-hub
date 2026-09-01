@@ -124,3 +124,10 @@ class DocumentChunk(BaseModel):
             }
         }
     )
+
+
+class DocumentUploadResponse(BaseModel):
+    status: str = Field(..., description="İşlemin başarı durumu (success/error)")
+    filename: str = Field(..., description="Yüklenen dosyanın adı")
+    message: str = Field(..., description="Kullanıcıya gösterilecek bilgi mesajı")
+    chunk_count: int = Field(default=0, description="Dosyadan çıkarılan ve veritabanına kaydedilen parça sayısı")

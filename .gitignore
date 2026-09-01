@@ -5,3 +5,14 @@ __pycache__/
 # Depolama dizini (Yüklenen dosyalar depoya eklenmez)
 storage/documents/*
 !storage/documents/.gitkeep
+# Veritabanları ve Loglar
+chroma_db/
+storage/logs/
+*.sqlite3
+
+# Çevre Değişkenleri (GİZLİ KALMALI!)
+.env
+
+# Python Ön Bellek Dosyaları
+__pycache__/
+*.pyc

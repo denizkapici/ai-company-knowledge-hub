@@ -24,6 +24,9 @@ class RAGService:
         
         # 3. Kredi Kartı Maskeleme (16 haneli, tireli veya boşluklu)
         text = re.sub(r'\b(?:\d{4}[-\s]?){4}\b', '[KREDI_KARTI_GİZLENDI]', text)
+        # 4. Telefon Numarası Maskeleme (+90 veya 0 ile başlayan formatlar)
+        # 4. Telefon Numarası Maskeleme (PDF'ten gelen kaçak \n, \t, boşluk ve tireleri affetmez)
+        text = re.sub(r'(\+90|0)?(?:\s|\\n|\n|-)*5\d{2}(?:\s|\\n|\n|-)*\d{3}(?:\s|\\n|\n|-)*\d{2}(?:\s|\\n|\n|-)*\d{2}', '[TELEFON_GİZLENDİ]', text)
         
         return text
 
