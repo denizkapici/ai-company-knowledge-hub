@@ -24,6 +24,7 @@ from app.core.exceptions import AppException
 from app.services.rag_service import rag_service
 from app.services.vector_service import vector_service
 from app.schemas import DocumentUploadResponse
+from app.api import chat
 
 # YENİ: Uygulama başlarken logları yapılandır
 setup_logging()
@@ -69,6 +70,7 @@ app = FastAPI(
 # Rate Limiting (SlowAPI) Yapılandırması
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.include_router(chat.router)
 
 
 # ==========================================
