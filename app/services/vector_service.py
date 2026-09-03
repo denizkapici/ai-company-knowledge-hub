@@ -1,7 +1,7 @@
 import os
 import uuid
 import chromadb
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 import logging
 
 logger = logging.getLogger(__name__)
