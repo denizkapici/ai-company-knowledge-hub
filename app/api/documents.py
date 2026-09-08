@@ -30,63 +30,81 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
 
-# --- 1. ASENKRON DOKÜMAN YÜKLEME ---
+# --- 1. ASENKRON ÇOKLU DOKÜMAN YÜKLEME ---
 @router.post(
     "/upload",
-    response_model=DocumentResponse,
+    response_model=List[DocumentResponse], # YENİ: Artık bir liste dönüyoruz
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Asenkron Doküman Yükleme (Limit Korumalı)"
+    summary="Asenkron Çoklu Doküman Yükleme (Limit Korumalı)"
 )
 async def upload_document(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(..., description=f"Yüklenecek belge (Maks {MAX_FILE_SIZE_MB}MB - PDF, DOCX, TXT, MD)"),
-    title: str = Form(None, description="Doküman başlığı (Opsiyonel, verilmezse dosya adı kullanılır)"),
+    files: List[UploadFile] = File(..., description=f"Yüklenecek belgeler (Maks {MAX_FILE_SIZE_MB}MB - PDF, DOCX, TXT, MD)"),
+    title: str = Form(None, description="Doküman başlığı (Birden fazla dosya varsa dosya adları kullanılır)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Belirtilen dosyayı boyut ve uzantı limitlerine göre doğrular,
-    güvenli şekilde diske kaydeder ve arka plan işlemine gönderir.
+    Belirtilen dosyaları boyut ve uzantı limitlerine göre doğrular,
+    güvenli şekilde diske kaydeder ve her birini arka plan işlemine gönderir.
     """
-    # 1. UZANTI (EXTENSION) KONTROLÜ
-    file_ext = os.path.splitext(file.filename)[1].lower()
-    if file_ext not in ALLOWED_EXTENSIONS:
-        # TERTEMİZ HATA FIRLATMA
-        raise InvalidFileTypeError(
-            detail=f"Desteklenmeyen dosya türü! Sadece şu formatlara izin verilmektedir: {', '.join(ALLOWED_EXTENSIONS)}"
+    uploaded_documents = []
+
+    for file in files:
+        # 1. UZANTI (EXTENSION) KONTROLÜ
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in ALLOWED_EXTENSIONS:
+            raise InvalidFileTypeError(
+                detail=f"Desteklenmeyen dosya türü ({file.filename})! Sadece şu formatlara izin verilmektedir: {', '.join(ALLOWED_EXTENSIONS)}"
+            )
+
+        # 2. BOYUT (SIZE) KONTROLÜ
+        # Not: FastAPI UploadFile nesnelerinde .size niteliği dosya tamamen okunduğunda dolar.
+        # Bu nedenle en güvenli yol, save_upload_file içinde veya sonrasında boyutu kontrol etmektir.
+        if file.size and file.size > MAX_FILE_SIZE_BYTES:
+            raise FileSizeLimitExceededError(
+                detail=f"Dosya boyutu çok büyük ({file.filename})! Maksimum izin verilen boyut: {MAX_FILE_SIZE_MB} MB."
+            )
+
+        # 3. Dosyayı doğrula ve kaydet
+        file_path, file_size, real_mime = await save_upload_file(file)
+        
+        # Ekstra Boyut Kontrolü (Güvenlik için)
+        if file_size > MAX_FILE_SIZE_BYTES:
+            os.remove(file_path) # Büyük dosyayı diskten sil
+            raise FileSizeLimitExceededError(
+                detail=f"Dosya boyutu çok büyük ({file.filename})! Maksimum izin verilen boyut: {MAX_FILE_SIZE_MB} MB."
+            )
+
+        # 4. Başlık belirleme (Eğer tek dosya yüklendiyse formdan gelen title, değilse dosya adı)
+        doc_title = title if title and len(files) == 1 else (file.filename or "Adsız Doküman")
+
+        # 5. Veritabanına PENDING durumunda ekle
+        new_doc = Document(
+            title=doc_title,
+            file_path=file_path,
+            file_size=file_size,
+            mime_type=real_mime,
+            status=DocumentStatus.pending,
+            uploaded_by=current_user.id,
+            department_id=current_user.department_id
         )
+        db.add(new_doc)
+        db.commit()
+        db.refresh(new_doc)
+        
+        uploaded_documents.append(new_doc)
 
-    # 2. BOYUT (SIZE) KONTROLÜ
-    if file.size and file.size > MAX_FILE_SIZE_BYTES:
-        # TERTEMİZ HATA FIRLATMA
-        raise FileSizeLimitExceededError(
-            detail=f"Dosya boyutu çok büyük! Maksimum izin verilen boyut: {MAX_FILE_SIZE_MB} MB."
-        )
+        # 🌟 YENİ: Terminalde arka plan işlemini görebilmen için şık bir log ekledik
+        print(f"")
+        print(f"🚀 [YÜKLEME BAŞARILI] Dosya sunucuya alındı: {new_doc.title}")
+        print(f"⏳ [ARKA PLAN GÖREVİ] AI Vektörizasyon kuyruğuna aktarıldı (Durum: PENDING)")
+        print(f"")
 
-    # 3. Dosyayı doğrula ve kaydet
-    file_path, file_size, real_mime = await save_upload_file(file)
+        # 6. Arka plan görevini kuyruğa ekle
+        background_tasks.add_task(process_document_pipeline, new_doc.id)
 
-    # 4. Başlık belirtilmemişse orijinal dosya adını kullan
-    doc_title = title if title else (file.filename or "Adsız Doküman")
-
-    # 5. Veritabanına PENDING durumunda ekle
-    new_doc = Document(
-        title=doc_title,
-        file_path=file_path,
-        file_size=file_size,
-        mime_type=real_mime,
-        status=DocumentStatus.pending,
-        uploaded_by=current_user.id,
-        department_id=current_user.department_id
-    )
-    db.add(new_doc)
-    db.commit()
-    db.refresh(new_doc)
-
-    # 6. Arka plan görevini kuyruğa ekle
-    background_tasks.add_task(process_document_pipeline, new_doc.id)
-
-    return new_doc
+    return uploaded_documents
 
 
 # --- 2. DEPARTMANA ÖZEL LİSTELEME VE ARAMA ENDPOINT'İ ---
@@ -180,5 +198,8 @@ def delete_document(
     # 2. Veritabanından kaydı sil
     db.delete(document)
     db.commit()
+    
+    # Silindi logu
+    print(f"🗑️ [SİLİNDİ] Doküman sistemden temizlendi: {document.title}")
     
     return

@@ -131,3 +131,21 @@ class DocumentUploadResponse(BaseModel):
     filename: str = Field(..., description="Yüklenen dosyanın adı")
     message: str = Field(..., description="Kullanıcıya gösterilecek bilgi mesajı")
     chunk_count: int = Field(default=0, description="Dosyadan çıkarılan ve veritabanına kaydedilen parça sayısı")
+
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ChatSessionResponse(BaseModel):
+    id: int
+    title: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

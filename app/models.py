@@ -1,14 +1,14 @@
 import enum
-from datetime import datetime,timezone
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text,BigInteger,Enum as SQLEnum
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, BigInteger, Enum as SQLEnum
 from sqlalchemy.orm import relationship
-from app.database import Base
-from sqlalchemy.sql import func 
+from sqlalchemy.sql import func
+from app.database import Base 
 
 class UserRole(str, enum.Enum):
-      ADMIN = "admin"
-      MANAGER = "manager"
-      EMPLOYEE = "employee"
+    ADMIN = "admin"
+    MANAGER = "manager"
+    EMPLOYEE = "employee"
 
 class DocumentStatus(str, enum.Enum):
     pending = "pending"       # Bekliyor
@@ -28,7 +28,6 @@ class Department(Base):
     users = relationship("User", back_populates="department", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="department")
 
-
 class User(Base):
     __tablename__ = "users"
 
@@ -41,10 +40,12 @@ class User(Base):
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    
-    # İlişki: Kullanıcının bağlı olduğu departman
+    # İlişkiler
     department = relationship("Department", back_populates="users")
     documents = relationship("Document", back_populates="uploader")
+    
+    # YENİ: Kullanıcının sohbet oturumları (Kullanıcı silinirse sohbetleri de silinir)
+    chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
 
 class Document(Base):
     __tablename__ = "documents"
@@ -55,10 +56,10 @@ class Document(Base):
     file_size = Column(BigInteger, nullable=False)           # MB/GB cinsinden büyük dosyalar için BigInteger
     mime_type = Column(String, nullable=False)               # Örn: "application/pdf"
     
-    # Enum kullanımımız: SQLAlchemy'e bunun bir Enum olduğunu söylüyoruz
+    # Enum kullanımımız
     status = Column(SQLEnum(DocumentStatus), default=DocumentStatus.pending, nullable=False)
     
-    # Zaman damgaları (Loglama için çok önemlidir)
+    # Zaman damgaları
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -69,3 +70,35 @@ class Document(Base):
     # ORM İlişki Tanımlamaları
     department = relationship("Department", back_populates="documents")
     uploader = relationship("User", back_populates="documents")
+
+
+# ==========================================
+# 1. SOHBET OTURUMU (CHAT SESSION) TABLOSU
+# ==========================================
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(255), default="Yeni Sohbet")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # İlişkiler:
+    user = relationship("User", back_populates="chat_sessions")
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+
+
+# ==========================================
+# 2. SOHBET MESAJLARI (CHAT MESSAGE) TABLOSU
+# ==========================================
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String(50), nullable=False) # 'user' veya 'ai' gelecek
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # İlişki: Bu mesaj hangi oturuma ait?
+    session = relationship("ChatSession", back_populates="messages")
