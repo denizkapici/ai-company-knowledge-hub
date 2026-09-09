@@ -15,7 +15,8 @@ from langchain_community.vectorstores import Chroma
 # Veritabanı ve Modeller
 from app.database import get_db
 from app.api.deps import get_current_user
-from app.models import User, ChatSession, ChatMessage
+# ✨ DÜZELTME 1: Document modelini veritabanından isim çekmek için import ettik
+from app.models import User, ChatSession, ChatMessage, Document
 from app.schemas import ChatSessionResponse, ChatMessageResponse
 
 router = APIRouter(
@@ -158,26 +159,55 @@ async def chat_with_documents(
             embedding_function=vector_service.embeddings
         )
 
-        # 🛠️ DÜZELTME 2: Bilinmeyen yazmasını engellemek için farklı etiketleri tarıyoruz
+        # ==========================================
+        # 🚀 SİHİRLİ DÜZELTME: KESİN DOKÜMAN EŞLEŞTİRME VE İZOLASYON
+        # ==========================================
         ref_data = None
         try:
-            docs = langchain_vector_store.similarity_search(request.question, k=1)
+            # 1. Arama Filtresi (Yapay Zeka kalkanımızı buraya da ekliyoruz)
+            search_filter = None
+            if current_user.role != "admin":
+                search_filter = {
+                    "$or": [
+                        {"department_id": current_user.department_id},
+                        {"department_id": None}
+                    ]
+                }
+
+            # 2. Soruya en uygun parçayı (chunk) bul
+            docs = langchain_vector_store.similarity_search(
+                request.question, 
+                k=1,
+                filter=search_filter
+            )
+            
             if docs and len(docs) > 0:
                 metadata = docs[0].metadata
-                # Sadece source değil; filename, file_name, title etiketlerine de bak
-                source_val = metadata.get("source") or metadata.get("filename") or metadata.get("file_name") or metadata.get("title") or "Belge"
-                file_name = os.path.basename(str(source_val))
-                page_no = metadata.get("page", 0) + 1 
                 
-                ref_data = {"page": page_no, "source": file_name}
+                # 3. Parçanın hangi dokümana ait olduğunu ID'sinden bul
+                doc_id = metadata.get("document_id")
+                file_name = "Bilinmeyen Doküman"
+                
+                if doc_id:
+                    # 4. Veritabanına gidip dokümanın GERÇEK adını çekiyoruz!
+                    matched_db_doc = db.query(Document).filter(Document.id == doc_id).first()
+                    if matched_db_doc:
+                        file_name = matched_db_doc.title or "Belge"
+                
+                page_no = metadata.get("chunk_index", 0) + 1 
+                
+                # 5. Arayüze (React) nokta atışı tam ismi gönder
+                ref_data = {"page": page_no, "source": file_name, "document_id": doc_id}
         except Exception as e:
             pass 
+        # ==========================================
 
         # 5. LangChain servisine soruyu ve geçmişi yolla
         generator = get_chat_response_stream(
             question=request.question, 
             history=history_list, 
-            vector_store=langchain_vector_store
+            vector_store=langchain_vector_store,
+            current_user=current_user
         )
         
         # 6. SİHİRLİ KISIM: Async Akış ve Gizli Kod Gönderimi

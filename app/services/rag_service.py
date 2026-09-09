@@ -2,6 +2,8 @@ import pymupdf
 import re  # YENİ: Regex için Python'un yerleşik kütüphanesini ekliyoruz
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.schemas import DocumentChunk
+from langchain_google_genai import ChatGoogleGenerativeAI
+from app.core.config import settings
 
 class RAGService:
     def __init__(self):
@@ -9,6 +11,11 @@ class RAGService:
             model_name="gpt-3.5-turbo",
             chunk_size=1000,
             chunk_overlap=100
+        )
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL_NAME,
+            google_api_key=settings.GOOGLE_API_KEY,
+            temperature=0.3
         )
 
     # YENİ EKLENEN FONKSİYON: Veri Maskeleme Motoru

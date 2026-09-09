@@ -9,10 +9,9 @@ from app.models import User, Document, DocumentStatus
 from app.schemas import DocumentResponse
 from app.api.deps import get_current_user
 from app.services.file_service import save_upload_file
-from app.services.document_processor import process_document_pipeline
+from app.services.document_processor import process_document_pipeline, generate_document_summary
 from app import crud
 
-# YENİ: Özel Hata Sınıflarımızı İçeri Aktarıyoruz
 from app.core.exceptions import (
     DocumentNotFoundError, 
     DepartmentNotMatchError, 
@@ -25,7 +24,7 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 # ==========================================
 # 🛡️ GÜVENLİK SINIRLARI (HARD LIMITS)
 # ==========================================
-MAX_FILE_SIZE_MB = 20  # Maksimum dosya boyutu (20 MB)
+MAX_FILE_SIZE_MB = 20  
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
@@ -33,21 +32,31 @@ ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 # --- 1. ASENKRON ÇOKLU DOKÜMAN YÜKLEME ---
 @router.post(
     "/upload",
-    response_model=List[DocumentResponse], # YENİ: Artık bir liste dönüyoruz
+    response_model=List[DocumentResponse],
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Asenkron Çoklu Doküman Yükleme (Limit Korumalı)"
+    summary="Asenkron Çoklu Doküman Yükleme (Limit ve Departman Korumalı)"
 )
 async def upload_document(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(..., description=f"Yüklenecek belgeler (Maks {MAX_FILE_SIZE_MB}MB - PDF, DOCX, TXT, MD)"),
     title: str = Form(None, description="Doküman başlığı (Birden fazla dosya varsa dosya adları kullanılır)"),
+    # ✨ YENİ: Hangi departmana ait olduğunu arayüzden alıyoruz (Boşsa Global olur)
+    department_id: Optional[int] = Form(None, description="Hedef Departman ID. Boş bırakılırsa Tüm Şirkete Açık (Global) olur."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Belirtilen dosyaları boyut ve uzantı limitlerine göre doğrular,
-    güvenli şekilde diske kaydeder ve her birini arka plan işlemine gönderir.
+    Belirtilen dosyaları doğrular, diske kaydeder ve arka plan işlemine gönderir.
+    Eklenen Hedef Departman özelliği ile dosyaların kimlere ait olacağı seçilebilir.
     """
+    
+    # 🛡️ YENİ GÜVENLİK (IDOR KORUMASI): Çalışanlar başkasının klasörüne dosya sızdıramaz!
+    if current_user.role != "admin":
+        if department_id is not None and department_id != current_user.department_id:
+            raise DepartmentNotMatchError(
+                detail="Sadece kendi departmanınıza veya 'Tüm Şirket' (Global) panosuna dosya yükleyebilirsiniz!"
+            )
+
     uploaded_documents = []
 
     for file in files:
@@ -59,8 +68,6 @@ async def upload_document(
             )
 
         # 2. BOYUT (SIZE) KONTROLÜ
-        # Not: FastAPI UploadFile nesnelerinde .size niteliği dosya tamamen okunduğunda dolar.
-        # Bu nedenle en güvenli yol, save_upload_file içinde veya sonrasında boyutu kontrol etmektir.
         if file.size and file.size > MAX_FILE_SIZE_BYTES:
             raise FileSizeLimitExceededError(
                 detail=f"Dosya boyutu çok büyük ({file.filename})! Maksimum izin verilen boyut: {MAX_FILE_SIZE_MB} MB."
@@ -69,14 +76,14 @@ async def upload_document(
         # 3. Dosyayı doğrula ve kaydet
         file_path, file_size, real_mime = await save_upload_file(file)
         
-        # Ekstra Boyut Kontrolü (Güvenlik için)
+        # Ekstra Boyut Kontrolü
         if file_size > MAX_FILE_SIZE_BYTES:
-            os.remove(file_path) # Büyük dosyayı diskten sil
+            os.remove(file_path)
             raise FileSizeLimitExceededError(
                 detail=f"Dosya boyutu çok büyük ({file.filename})! Maksimum izin verilen boyut: {MAX_FILE_SIZE_MB} MB."
             )
 
-        # 4. Başlık belirleme (Eğer tek dosya yüklendiyse formdan gelen title, değilse dosya adı)
+        # 4. Başlık belirleme
         doc_title = title if title and len(files) == 1 else (file.filename or "Adsız Doküman")
 
         # 5. Veritabanına PENDING durumunda ekle
@@ -87,7 +94,8 @@ async def upload_document(
             mime_type=real_mime,
             status=DocumentStatus.pending,
             uploaded_by=current_user.id,
-            department_id=current_user.department_id
+            # ✨ YENİ: Artık kullanıcının zorunlu ID'si yerine, arayüzden seçilen ID'yi kullanıyoruz
+            department_id=department_id 
         )
         db.add(new_doc)
         db.commit()
@@ -95,9 +103,8 @@ async def upload_document(
         
         uploaded_documents.append(new_doc)
 
-        # 🌟 YENİ: Terminalde arka plan işlemini görebilmen için şık bir log ekledik
         print(f"")
-        print(f"🚀 [YÜKLEME BAŞARILI] Dosya sunucuya alındı: {new_doc.title}")
+        print(f"🚀 [YÜKLEME BAŞARILI] Dosya sunucuya alındı: {new_doc.title} (Departman: {'Global' if department_id is None else department_id})")
         print(f"⏳ [ARKA PLAN GÖREVİ] AI Vektörizasyon kuyruğuna aktarıldı (Durum: PENDING)")
         print(f"")
 
@@ -121,12 +128,9 @@ def get_department_documents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Sisteme giriş yapmış kullanıcının sadece kendi departmanına ait belgeleri getirir.
-    """
     documents = crud.get_documents_by_department(
         db=db,
-        department_id=current_user.department_id,
+        current_user=current_user,  # 🛠️ GÜNCELLENDİ: Artık yetki kontrolü için direkt kullanıcıyı yolluyoruz
         skip=skip,
         limit=limit,
         search_title=search_title,
@@ -142,21 +146,15 @@ def download_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Kullanıcı ID'sini bildiği bir dosyayı indirmek istediğinde, dosyanın kendi 
-    departmanına ait olup olmadığı kontrol edilir (IDOR Koruması).
-    """
     document = crud.get_document_by_id_and_department(
         db=db, 
         document_id=document_id, 
-        department_id=current_user.department_id
+        current_user=current_user  # 🛠️ GÜNCELLENDİ
     )
     
-    # Eğer belge yoksa veya BAŞKA BİR DEPARTMANA aitse
     if not document:
         raise DepartmentNotMatchError(detail="Bu doküman bulunamadı veya indirmek için erişim yetkiniz yok!")
     
-    # Dosyanın diskte gerçekten var olup olmadığını kontrol et
     if not os.path.exists(document.file_path):
          raise DocumentNotFoundError(detail="Fiziksel dosya diskte bulunamadı, muhtemelen silinmiş.")
     
@@ -178,28 +176,48 @@ def delete_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Kullanıcının sadece kendi departmanına ait olan dosyaları silebilmesini sağlar.
-    Ayrıca dosyayı fiziksel olarak sunucu diskinden de temizler.
-    """
     document = crud.get_document_by_id_and_department(
         db=db, 
         document_id=document_id, 
-        department_id=current_user.department_id
+        current_user=current_user  # 🛠️ GÜNCELLENDİ
     )
     
     if not document:
         raise DepartmentNotMatchError(detail="Silmek istediğiniz doküman bulunamadı veya buna yetkiniz yok!")
         
-    # 1. Fiziksel dosyayı diskten sil (Yer tasarrufu ve temizlik)
     if os.path.exists(document.file_path):
         os.remove(document.file_path)
         
-    # 2. Veritabanından kaydı sil
     db.delete(document)
     db.commit()
     
-    # Silindi logu
     print(f"🗑️ [SİLİNDİ] Doküman sistemden temizlendi: {document.title}")
-    
     return
+
+
+# --- 5. AI DOKÜMAN ÖZETLEME ENDPOINT'İ ---
+@router.get("/{document_id}/summary", summary="Yapay Zeka ile Yönetici Özeti Çıkar")
+async def summarize_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    document = crud.get_document_by_id_and_department(
+        db=db, 
+        document_id=document_id, 
+        current_user=current_user  # 🛠️ GÜNCELLENDİ
+    )
+    
+    if not document:
+        raise DepartmentNotMatchError(detail="Özetini çıkarmak istediğiniz doküman bulunamadı veya buna yetkiniz yok!")
+        
+    if not os.path.exists(document.file_path):
+         raise DocumentNotFoundError(detail="Özetlenecek fiziksel dosya diskte bulunamadı.")
+
+    summary_text = await generate_document_summary(document.file_path, document.title)
+    
+    return {
+        "document_id": document.id, 
+        "title": document.title, 
+        "summary": summary_text
+    }

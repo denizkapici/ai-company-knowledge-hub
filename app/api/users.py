@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel # YENİ EKLENDİ: Role güncellemesi için
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -7,6 +8,13 @@ from app.api.deps import require_role
 from app.database import get_db
 
 router = APIRouter()
+
+# ==========================================
+# 🛡️ YARDIMCI ŞEMA (Sadece yetki güncellemek için)
+# ==========================================
+class RoleUpdateRequest(BaseModel):
+    role: str
+
 
 @router.post(
     "/",
@@ -40,3 +48,76 @@ def read_users(
     current_user: models.User = Depends(require_role(["admin"]))
 ):
     return crud.get_users(db=db, skip=skip, limit=limit)
+
+
+# ==========================================
+# 🗑️ YENİ: KULLANICI SİLME ENDPOINT'İ
+# ==========================================
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Kullanıcıyı sistemden sil (Yalnızca Admin)"
+)
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(["admin"]))
+):
+    # 1. Güvenlik: Admin'in yanlışlıkla kendini silmesini engelle
+    if current_user.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kendi hesabınızı silemezsiniz!"
+        )
+
+    # 2. Kullanıcıyı bul
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+
+    # 3. Veritabanından sil ve kaydet
+    db.delete(user)
+    db.commit()
+    return
+
+
+# ==========================================
+# 👑 YENİ: KULLANICI YETKİSİ (ROLE) GÜNCELLEME
+# ==========================================
+@router.put(
+    "/{user_id}/role",
+    response_model=schemas.UserResponse,
+    summary="Kullanıcı yetkisini güncelle (Yalnızca Admin)"
+)
+def update_user_role(
+    user_id: int,
+    role_data: RoleUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(["admin"]))
+):
+    # 1. Güvenlik: Admin'in kazara kendi yetkisini düşürmesini engelle
+    if current_user.id == user_id and role_data.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kendi admin yetkinizi düşüremezsiniz!"
+        )
+
+    # 2. Kullanıcıyı bul
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+
+    # 3. Geçerli rol kontrolü (Hatalı bir kelime yazılmasını engeller)
+    valid_roles = ["employee", "manager", "admin"]
+    if role_data.role not in valid_roles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Geçersiz yetki! Geçerli yetkiler: {', '.join(valid_roles)}"
+        )
+
+    # 4. Yetkiyi güncelle ve kaydet
+    user.role = role_data.role
+    db.commit()
+    db.refresh(user)
+    
+    return user

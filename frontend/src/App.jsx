@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'; 
-import { Home, MessageSquare, Settings, User, Plus, Send, UploadCloud, X, FileText, Lock, Mail, LogOut, ShieldCheck, Users, MessageCircle } from 'lucide-react';
+import { Home, MessageSquare, Settings, User, Plus, Send, UploadCloud, X, FileText, Lock, Mail, LogOut, ShieldCheck, Users, MessageCircle, Sparkles, Trash2 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -10,15 +10,16 @@ function App() {
   const [loginError, setLoginError] = useState(''); 
   const [isLoading, setIsLoading] = useState(false); 
 
-  // EKRAN GÖRÜNÜMÜ KONTROLÜ (Chat mi? Admin mi?)
+  // EKRAN GÖRÜNÜMÜ KONTROLÜ
   const [activeView, setActiveView] = useState('chat'); 
   const [message, setMessage] = useState(''); 
   
   // Sisteme giriş yapan kullanıcının rolü
   const [userRole, setUserRole] = useState(null); 
+  const [currentUserId, setCurrentUserId] = useState(null); 
 
   // ==========================================
-  // 💬 CHAT (SOHBET) SİSTEMİ STATE'LERİ
+  // 💬 CHAT SİSTEMİ STATE'LERİ
   // ==========================================
   const [chatSessions, setChatSessions] = useState([]); 
   const [activeSessionId, setActiveSessionId] = useState(null); 
@@ -39,9 +40,9 @@ function App() {
   }, [chatHistory, isChatLoading, activeView]);
 
   // ==========================================
-  // 📁 DOKÜMAN YÜKLEME VE LİSTELEME STATE'LERİ
+  // 📁 DOKÜMAN YÜKLEME VE LİSTELEME
   // ==========================================
-  const [selectedFile, setSelectedFile] = useState(null); // Artık dizi (array) tutacak
+  const [selectedFile, setSelectedFile] = useState(null); 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
   
@@ -50,6 +51,8 @@ function App() {
   const [pdfUrl, setPdfUrl] = useState(null); 
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [uploadDepartmentId, setUploadDepartmentId] = useState('');
 
   // ==========================================
   // 🛡️ ADMIN PANELİ STATE'LERİ 
@@ -60,13 +63,22 @@ function App() {
   const [registerMsg, setRegisterMsg] = useState({ type: '', text: '' });
   const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'employee', department_id: '' });
 
-  // Çıkış Yapma İşlemi
+  // ==========================================
+  // ✨ AI DOKÜMAN ÖZETLEME STATE'LERİ 
+  // ==========================================
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [summaryContent, setSummaryContent] = useState('');
+  const [summaryDocTitle, setSummaryDocTitle] = useState('');
+  const [summaryLoadingDocId, setSummaryLoadingDocId] = useState(null);
+
+  // Çıkış Yapma
   const handleLogout = () => {
     localStorage.removeItem('access_token'); 
     setIsAuthenticated(false);
     setEmail('');
     setPassword('');
     setUserRole(null); 
+    setCurrentUserId(null);
     setChatSessions([]);
     setActiveSessionId(null);
     setChatHistory([]);
@@ -75,7 +87,6 @@ function App() {
     toast.success('Başarıyla çıkış yapıldı.');
   };
 
-  // Güvenli API İstek Fonksiyonu
   const fetchWithAuth = async (url, options = {}) => {
     const token = localStorage.getItem('access_token');
     const headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
@@ -89,9 +100,6 @@ function App() {
     return response;
   };
 
-  // ==========================================
-  // 🔄 1. GEÇMİŞ SOHBETLERİ GETİRME (SOL MENÜ)
-  // ==========================================
   const fetchChatSessions = async () => {
     try {
       const response = await fetchWithAuth('http://localhost:8000/api/v1/chat/sessions');
@@ -110,9 +118,6 @@ function App() {
     }
   };
 
-  // ==========================================
-  // ➕ 2. YENİ SOHBET (NEW CHAT) OLUŞTURMA
-  // ==========================================
   const handleNewChat = async () => {
     try {
       const response = await fetchWithAuth('http://localhost:8000/api/v1/chat/sessions', { method: 'POST' });
@@ -130,9 +135,6 @@ function App() {
     }
   };
 
-  // ==========================================
-  // 📂 3. ESKİ BİR SOHBETE TIKLAMA
-  // ==========================================
   const handleSelectSession = async (sessionId) => {
     setActiveSessionId(sessionId);
     setChatHistory([]); 
@@ -161,9 +163,6 @@ function App() {
     }
   };
 
-  // ==========================================
-  // 🗑️ 3.5 SOHBET SİLME FONKSİYONU (MODERN ONAYLI)
-  // ==========================================
   const confirmDeleteSession = (sessionId, e) => {
     e.stopPropagation(); 
     toast((t) => (
@@ -214,9 +213,6 @@ function App() {
     }
   };
 
-  // ==========================================
-  // ADMIN & DOKÜMAN & KULLANICI VERİLERİNİ ÇEKME
-  // ==========================================
   const fetchAdminData = async () => {
     try {
       const [usersRes, depsRes] = await Promise.all([fetchWithAuth('http://localhost:8000/users/'), fetchWithAuth('http://localhost:8000/departments/')]);
@@ -238,6 +234,7 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         setUserRole(data.role); 
+        setCurrentUserId(data.id);
       }
     } catch (error) {}
   };
@@ -255,9 +252,6 @@ function App() {
     if (isAuthenticated && activeView === 'admin') fetchAdminData();
   }, [isAuthenticated, activeView]);
 
-  // ==========================================
-  // ⏳ AKILLI DOKÜMAN YENİLEME (POLLING)
-  // ==========================================
   useEffect(() => {
     let interval;
     if (isAuthenticated && documents.some(doc => doc.status === 'PENDING')) {
@@ -287,9 +281,100 @@ function App() {
     }
   };
 
-  // ==========================================
-  // 🗑️ DOKÜMAN SİLME FONKSİYONU (MODERN ONAYLI)
-  // ==========================================
+  const handleRoleChange = async (userId, newRole) => {
+    if (userId === currentUserId && newRole !== 'admin') {
+        toast.error("Kendi Admin yetkinizi düşüremezsiniz!");
+        return;
+    }
+
+    try {
+      const response = await fetchWithAuth(`http://localhost:8000/users/${userId}/role`, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole }) 
+      });
+
+      if (response.ok) {
+        toast.success("Kullanıcı yetkisi güncellendi.");
+        fetchAdminData();
+      } else {
+        const err = await response.json();
+        toast.error(err.detail || "Yetki güncellenemedi.");
+      }
+    } catch (error) {
+      toast.error("Sunucuya ulaşılamadı.");
+    }
+  };
+
+  const confirmDeleteUser = (usr) => {
+    if (usr.id === currentUserId) {
+        toast.error("Kendi hesabınızı silemezsiniz!");
+        return;
+    }
+
+    toast((t) => (
+      <div className="flex flex-col gap-3">
+        <span className="text-sm font-bold text-slate-800">"{usr.name}" kullanıcısını silmek istediğinize emin misiniz?</span>
+        <div className="flex gap-2 justify-end">
+          <button 
+            onClick={() => toast.dismiss(t.id)} 
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition"
+          >
+            İptal
+          </button>
+          <button 
+            onClick={() => {
+              toast.dismiss(t.id);
+              executeDeleteUser(usr.id);
+            }} 
+            className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition shadow-sm"
+          >
+            Evet, Sil
+          </button>
+        </div>
+      </div>
+    ), { duration: 6000, id: `delete-user-${usr.id}` });
+  };
+
+  const executeDeleteUser = async (userId) => {
+    try {
+      const response = await fetchWithAuth(`http://localhost:8000/users/${userId}`, { method: 'DELETE' });
+      if (response.ok) { 
+        toast.success('Kullanıcı sistemden tamamen silindi.');
+        fetchAdminData();
+      } else { 
+        const err = await response.json();
+        toast.error(err.detail || 'Kullanıcı silinemedi.'); 
+      }
+    } catch (error) { 
+      toast.error('Sunucuya ulaşılamadı. Silme işlemi başarısız.'); 
+    }
+  };
+
+  const handleSummarizeDocument = async (doc, e) => {
+    e.stopPropagation(); 
+    const docId = doc.id || doc._id || doc.document_id;
+    const docName = doc.filename || doc.name || doc.file_name || doc.title || 'Doküman';
+    
+    setSummaryLoadingDocId(docId); 
+    
+    try {
+      const response = await fetchWithAuth(`http://localhost:8000/documents/${docId}/summary`);
+      if (response.ok) {
+        const data = await response.json();
+        setSummaryContent(data.summary);
+        setSummaryDocTitle(docName);
+        setIsSummaryModalOpen(true);
+      } else {
+        toast.error('Özet alınırken bir hata oluştu. Henüz işlenmemiş olabilir.');
+      }
+    } catch (error) {
+      toast.error('Sunucuya ulaşılamadı. Özet işlemi başarısız.');
+    } finally {
+      setSummaryLoadingDocId(null);
+    }
+  };
+
   const confirmDeleteDocument = (doc, e) => {
     e.stopPropagation(); 
     const docName = doc.filename || doc.name || doc.title || "Bu doküman";
@@ -332,11 +417,20 @@ function App() {
     }
   };
 
+  // =======================================================
+  // 🚀 DÜZELTME: MODAL (BÜYÜK EKRAN) DOSYA ÖNİZLEME
+  // =======================================================
   const handlePreviewDocument = async (doc) => {
     setPreviewDoc(doc); setPdfUrl(null); setIsPdfLoading(true); setIsModalOpen(true); 
     try {
       const response = await fetchWithAuth(`http://localhost:8000/documents/${doc.id || doc._id || doc.filename}/download`);
-      if (response.ok) { const blob = await response.blob(); setPdfUrl(URL.createObjectURL(blob)); }
+      if (response.ok) { 
+        const blob = await response.blob(); 
+        // ✨ DÜZELTME: Backend'in gönderdiği orijinal dosya tipini kullan
+        const mimeType = blob.type || 'application/pdf';
+        const fileBlob = new Blob([blob], { type: mimeType });
+        setPdfUrl(URL.createObjectURL(fileBlob)); 
+      }
     } catch (error) {
       toast.error('Doküman yüklenirken hata oluştu.');
     } finally { 
@@ -375,9 +469,9 @@ function App() {
     }
   };
 
-  // ==========================================
-  // 🚀 4. MESAJ GÖNDERME (STREAMING + AI REFERANS YAKALAYICI)
-  // ==========================================
+  // =======================================================
+  // 🚀 DÜZELTME: SOHBET YANIT SİSTEMİ (SAĞ ALT REFERANS EKRANI)
+  // =======================================================
   const handleSendMessage = async () => {
     if (!message.trim() || !activeSessionId) return; 
     
@@ -405,6 +499,8 @@ function App() {
       const decoder = new TextDecoder('utf-8');
       let done = false;
       let aiFullResponse = "";
+      
+      let hasFetchedRef = false; 
 
       setChatHistory(prev => [...prev, { role: 'ai', content: '' }]);
 
@@ -418,7 +514,8 @@ function App() {
           let displayContent = aiFullResponse;
           const refMatch = aiFullResponse.match(/\[\[REF:(.*?)\]\]/);
           
-          if (refMatch) {
+          if (refMatch && !hasFetchedRef) {
+            hasFetchedRef = true; 
             try {
               const refParsed = JSON.parse(refMatch[1]);
               
@@ -429,33 +526,39 @@ function App() {
               setReferenceData({ page: refParsed.page, keyword: searchKeyword });
               
               let matchedDoc = documents.find(d => {
-                const docName = (d.filename || d.name || d.title || "").toLowerCase();
-                const sourceName = (refParsed.source || "").toLowerCase();
+                const docName = (d.title || d.filename || d.name || "").toLowerCase().trim();
+                const refName = (refParsed.source || "").toLowerCase().trim();
+                
+                if (docName === refName) return true;
+                
                 const cleanDoc = docName.replace(/\.[^/.]+$/, "");
-                const cleanSource = sourceName.replace(/\.[^/.]+$/, "");
-                return sourceName.includes(cleanDoc) || docName.includes(cleanSource) || cleanDoc === cleanSource;
+                const cleanSource = refName.replace(/\.[^/.]+$/, "");
+                
+                return cleanDoc === cleanSource || docName.includes(cleanSource) || refName.includes(cleanDoc);
               });
-              
-              if (!matchedDoc && documents.length > 0) {
-                matchedDoc = documents.find(d => (d.filename || d.name || "").toLowerCase().endsWith(".pdf")) || documents[0];
-              }
               
               if (matchedDoc) {
                 const docId = matchedDoc.id || matchedDoc._id || matchedDoc.document_id;
+
                 fetchWithAuth(`http://localhost:8000/documents/${docId}/download`)
-                  .then(res => res.blob())
-                  .then(blob => {
-                    const pdfBlob = new Blob([blob], { type: 'application/pdf' });
-                    setReferencePdfUrl(URL.createObjectURL(pdfBlob));
+                  .then(res => {
+                     if (!res.ok) throw new Error("Dosya indirilemedi");
+                     return res.blob();
                   })
-                  .catch(err => console.error("Referans PDF çekilemedi:", err));
+                  .then(blob => {
+                    // ✨ DÜZELTME: Yanlış mimeType tahmini silindi. Direkt backend'den gelen orijinal tipi kullanıyoruz.
+                    const mimeType = blob.type || 'application/pdf';
+                    const fileBlob = new Blob([blob], { type: mimeType });
+                    setReferencePdfUrl(URL.createObjectURL(fileBlob));
+                  })
+                  .catch(err => console.error("Referans dosya çekilemedi:", err));
               }
             } catch (e) {
               console.error("Referans ayrıştırma hatası:", e);
             }
-            
-            displayContent = aiFullResponse.replace(/\[\[REF:.*?\]\]/, '');
           }
+          
+          displayContent = aiFullResponse.replace(/\[\[REF:.*?\]\]/g, '');
 
           setChatHistory(prev => {
             const newHistory = [...prev];
@@ -478,7 +581,6 @@ function App() {
     if (e.key === 'Enter' && !isChatLoading) handleSendMessage();
   };
 
-  // 🌟 YENİ: ÇOKLU DOSYA SEÇİMİ (ARRAY OLARAK ALMA)
   const handleFileChange = (event) => { 
     if (event.target.files && event.target.files.length > 0) { 
       setSelectedFile(Array.from(event.target.files)); 
@@ -489,15 +591,18 @@ function App() {
     }
   };
 
-  // 🌟 YENİ: ÇOKLU DOSYA YÜKLEME (FORMDATA APPEND DÖNGÜSÜ)
   const handleFileUpload = async () => {
     if (!selectedFile || selectedFile.length === 0) return;
     setIsUploading(true); setUploadMessage('');
     const formData = new FormData(); 
     
     selectedFile.forEach(file => {
-      formData.append('files', file); // Backend'deki "files" ismine uygun eklendi
+      formData.append('files', file); 
     });
+
+    if (uploadDepartmentId !== '') {
+      formData.append('department_id', uploadDepartmentId);
+    }
     
     try {
       const response = await fetchWithAuth('http://localhost:8000/documents/upload', { method: 'POST', body: formData });
@@ -505,6 +610,7 @@ function App() {
         setUploadMessage('Dosyalar başarıyla yüklendi! ✅'); 
         toast.success('Dosyalar başarıyla yüklendi!');
         setSelectedFile(null); 
+        setUploadDepartmentId(''); 
         document.getElementById('file-upload-input').value = ''; 
         fetchDocuments(); 
       } else { 
@@ -519,9 +625,6 @@ function App() {
     }
   };
 
-  // ==========================================
-  // EKRAN 1: GİRİŞ YAPILMADIYSA LOGIN GÖSTER
-  // ==========================================
   if (!isAuthenticated) {
     return (
       <>
@@ -563,15 +666,11 @@ function App() {
     );
   }
 
-  // ==========================================
-  // EKRAN 2: GİRİŞ BAŞARILIYSA ANA UYGULAMAYI GÖSTER
-  // ==========================================
   return (
     <>
       <Toaster position="top-right" />
       <div className="flex h-screen bg-white font-sans text-slate-800 overflow-hidden relative">
         
-        {/* 1. SOL BÖLÜM: Navigasyon ve Geçmiş */}
         <div className="flex h-full border-r border-slate-200">
           <div className="w-16 bg-brand-dark flex flex-col items-center py-6 gap-8 text-slate-400 shrink-0">
             <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-teal-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30 cursor-pointer hover:scale-105 transition-transform border border-slate-700 mb-4">
@@ -588,7 +687,6 @@ function App() {
             <Settings onClick={testSecuredEndpoint} className="w-6 h-6 hover:text-white cursor-pointer transition-colors text-yellow-500 hover:text-yellow-400" />
             
             <div className="mt-auto pb-4 flex flex-col gap-6 items-center">
-              {/* 🛡️ SADECE ADMIN GÖREBİLİR */}
               {userRole === 'admin' && (
                 <User 
                   onClick={() => setActiveView('admin')} 
@@ -610,7 +708,6 @@ function App() {
             <div className="flex-1 overflow-y-auto p-2">
               <div className="text-xs font-bold text-slate-500 mb-2 px-2 uppercase tracking-wider">Recent Chats</div>
               
-              {/* 🔄 DİNAMİK SOHBET LİSTESİ */}
               {chatSessions.length === 0 ? (
                 <div className="text-xs text-slate-400 text-center mt-4">Henüz sohbet yok.</div>
               ) : (
@@ -627,7 +724,6 @@ function App() {
                       <MessageCircle className="w-4 h-4 shrink-0 opacity-70" />
                       <span className="truncate" title={session.title}>{session.title}</span>
                     </div>
-                    {/* 🗑️ MODERN SİLME BUTONU BAĞLANTISI */}
                     <button 
                       onClick={(e) => confirmDeleteSession(session.id, e)}
                       className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"
@@ -643,17 +739,12 @@ function App() {
           </div>
         </div>
 
-        {/* 2. ORTA BÖLÜM: DİNAMİK EKRAN (CHAT VEYA ADMIN) */}
         <div className="flex-1 flex flex-col bg-white relative overflow-hidden">
           
           {activeView === 'chat' ? (
             
-            // ==============================
-            // CHAT ARAYÜZÜ 
-            // ==============================
             <>
               <div className="h-16 border-b border-slate-200 flex items-center px-6 font-bold text-lg text-slate-800 shrink-0">
-                 {/* Üst başlığa aktif sohbetin adını yaz */}
                  {activeSessionId ? (chatSessions.find(s => s.id === activeSessionId)?.title || "Chat") : "Chat"}
               </div>
               
@@ -671,7 +762,6 @@ function App() {
                   )
                 ))}
 
-                {/* 🛠️ GERİ GETİRİLEN 3 NOKTALI BEKLEME ANİMASYONU */}
                 {isChatLoading && (
                   <div className="flex justify-start gap-4">
                     <div className="w-8 h-8 rounded-full bg-brand-blue flex items-center justify-center text-white shrink-0 mt-1 shadow-sm">
@@ -711,9 +801,6 @@ function App() {
 
           ) : (
             
-            // ==============================
-            // 🛡️ ADMIN PANELİ ARAYÜZÜ 
-            // ==============================
             <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-y-auto">
               <div className="h-16 border-b border-slate-200 bg-white flex items-center px-6 font-bold text-lg text-slate-800 shrink-0 gap-2 shadow-sm">
                 <ShieldCheck className="w-6 h-6 text-brand-blue" />
@@ -722,7 +809,6 @@ function App() {
 
               <div className="p-6 max-w-7xl mx-auto w-full grid grid-cols-1 xl:grid-cols-3 gap-6">
                 
-                {/* SOL KISIM: KULLANICI LİSTESİ TABLOSU */}
                 <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[700px]">
                   <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
                     <Users className="w-5 h-5 text-slate-500" />
@@ -738,32 +824,55 @@ function App() {
                           <th className="pb-3 font-semibold px-2">E-posta</th>
                           <th className="pb-3 font-semibold px-2">Yetki (Rol)</th>
                           <th className="pb-3 font-semibold px-2">Durum</th>
+                          <th className="pb-3 font-semibold px-2 text-right">İşlem</th> 
                         </tr>
                       </thead>
                       <tbody className="text-sm">
                         {usersList.length === 0 ? (
-                          <tr><td colSpan="5" className="text-center py-8 text-slate-400">Henüz kullanıcı bulunmuyor.</td></tr>
+                          <tr><td colSpan="6" className="text-center py-8 text-slate-400">Henüz kullanıcı bulunmuyor.</td></tr>
                         ) : (
                           usersList.map((usr) => (
-                            <tr key={usr.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                            <tr key={usr.id} className="border-b border-slate-100 hover:bg-slate-50 transition group">
                               <td className="py-3 px-2 font-medium text-slate-500">#{usr.id}</td>
                               <td className="py-3 px-2 font-bold text-slate-800">{usr.name}</td>
                               <td className="py-3 px-2 text-slate-600">{usr.email}</td>
+                              
                               <td className="py-3 px-2">
-                                <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide
-                                  ${usr.role === 'admin' ? 'bg-purple-100 text-purple-700' : 
-                                    usr.role === 'manager' ? 'bg-blue-100 text-blue-700' : 
-                                    'bg-slate-100 text-slate-600'}`
-                                }>
-                                  {usr.role}
-                                </span>
+                                <select 
+                                  value={usr.role} 
+                                  onChange={(e) => handleRoleChange(usr.id, e.target.value)}
+                                  disabled={usr.id === currentUserId}
+                                  className={`px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wide cursor-pointer outline-none border focus:ring-2 focus:ring-brand-blue transition
+                                    ${usr.role === 'admin' ? 'bg-purple-100 text-purple-700 border-purple-200' : 
+                                      usr.role === 'manager' ? 'bg-blue-100 text-blue-700 border-blue-200' : 
+                                      'bg-slate-100 text-slate-600 border-slate-200'}
+                                    ${usr.id === currentUserId ? 'opacity-60 cursor-not-allowed' : ''}
+                                  `}
+                                >
+                                  <option value="employee" className="font-bold text-slate-600 uppercase">Employee</option>
+                                  <option value="manager" className="font-bold text-blue-700 uppercase">Manager</option>
+                                  <option value="admin" className="font-bold text-purple-700 uppercase">Admin</option>
+                                </select>
                               </td>
+
                               <td className="py-3 px-2">
                                 {usr.is_active ? 
                                   <span className="flex items-center gap-1 text-emerald-600 font-semibold"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Aktif</span> : 
                                   <span className="flex items-center gap-1 text-red-500 font-semibold"><div className="w-2 h-2 rounded-full bg-red-500"></div>Pasif</span>
                                 }
                               </td>
+
+                              <td className="py-3 px-2 text-right">
+                                <button 
+                                  onClick={() => confirmDeleteUser(usr)}
+                                  disabled={usr.id === currentUserId}
+                                  className={`p-1.5 rounded transition ${usr.id === currentUserId ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                                  title={usr.id === currentUserId ? 'Kendinizi silemezsiniz' : 'Kullanıcıyı Sil'}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+
                             </tr>
                           ))
                         )}
@@ -772,7 +881,6 @@ function App() {
                   </div>
                 </div>
 
-                {/* SAĞ KISIM: YENİ KULLANICI EKLEME FORMU */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 h-fit">
                   <h3 className="font-bold text-slate-700 text-lg mb-5 border-b border-slate-100 pb-3">Yeni Personel Kaydı</h3>
                   
@@ -829,13 +937,9 @@ function App() {
           )}
         </div>
 
-        {/* ========================================== */}
-        {/* 3. SAĞ BÖLÜM: Dokümanlar (Yalnızca CHAT EKRANINDA GÖSTERİLECEK) */}
-        {/* ========================================== */}
         {activeView === 'chat' && (
           <div className="w-80 border-l border-slate-200 bg-white flex flex-col shrink-0 relative z-10">
             
-            {/* Panel Başlığı (Sabit) */}
             <div className="h-16 border-b border-slate-200 flex items-center justify-between px-5 font-bold text-lg text-slate-800 shrink-0">
               Documents & Sources
               <X className="w-5 h-5 text-slate-400 cursor-pointer hover:text-slate-700 transition" />
@@ -843,11 +947,20 @@ function App() {
             
             <div className="p-5 flex flex-col gap-5 overflow-hidden flex-1">
               
-              {/* ÜST: Dosya Yükleme Kutusu (Sabit) */}
               <div className="border-2 border-dashed border-slate-300 rounded-xl p-5 flex flex-col items-center justify-center text-center transition bg-slate-50 hover:bg-white hover:border-brand-blue shrink-0">
                 <UploadCloud className={`w-8 h-8 mb-3 transition ${selectedFile && selectedFile.length > 0 ? 'text-brand-blue' : 'text-slate-400'}`} />
                 
-                {/* 🌟 YENİ: multiple özelliği ile toplu dosya seçimi */}
+                <select 
+                  value={uploadDepartmentId}
+                  onChange={(e) => setUploadDepartmentId(e.target.value)}
+                  className="mb-3 w-full px-2 py-1.5 text-xs font-bold text-slate-600 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-blue bg-white cursor-pointer"
+                >
+                  <option value="">🌍 Tüm Şirkete Açık (Global)</option>
+                  {departments.map(dep => (
+                    <option key={dep.id} value={dep.id}>📁 {dep.name}</option>
+                  ))}
+                </select>
+
                 <input
                   id="file-upload-input"
                   type="file"
@@ -876,7 +989,6 @@ function App() {
                 )}
               </div>
               
-              {/* 🎯 ORTA: DİNAMİK DOKÜMAN LİSTESİ */}
               <div className="flex flex-col flex-1 overflow-hidden">
                 <div className="text-xs font-bold text-slate-500 mb-2 px-1 uppercase tracking-wider shrink-0">Mevcut Dosyalar</div>
                 
@@ -888,6 +1000,7 @@ function App() {
                       
                       const docName = doc.filename || doc.name || doc.file_name || doc.title || `İsimsiz Dosya ${index + 1}`;
                       const status = doc.status || 'PROCESSED'; 
+                      const docIdForLoading = doc.id || doc._id || doc.document_id;
                       
                       return (
                         <div 
@@ -904,7 +1017,6 @@ function App() {
                                 {docName}
                               </div>
                               
-                              {/* 🌟 İŞLENİYOR / HAZIR ROZETİ */}
                               <div className="mt-0.5">
                                 {status === 'PENDING' ? (
                                   <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md">
@@ -924,14 +1036,30 @@ function App() {
                             </div>
                           </div>
 
-                          {/* 🗑️ MODERN BELGE SİLME BUTONU BAĞLANTISI */}
-                          <button 
-                            onClick={(e) => confirmDeleteDocument(doc, e)}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"
-                            title="Sil"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          <div className="opacity-0 group-hover:opacity-100 flex items-center transition shrink-0">
+                            
+                            <button 
+                              onClick={(e) => handleSummarizeDocument(doc, e)}
+                              disabled={summaryLoadingDocId === docIdForLoading || status === 'PENDING' || status === 'FAILED'}
+                              className="p-1.5 mr-1 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded transition disabled:opacity-50"
+                              title="✨ Yapay Zeka ile Özetle"
+                            >
+                              {summaryLoadingDocId === docIdForLoading ? (
+                                <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                              ) : (
+                                <Sparkles className="w-4 h-4" />
+                              )}
+                            </button>
+
+                            <button 
+                              onClick={(e) => confirmDeleteDocument(doc, e)}
+                              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                              title="Sil"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+
+                          </div>
                         </div>
                       );
                     })
@@ -939,7 +1067,6 @@ function App() {
                 </div>
               </div>
 
-              {/* ALT: AI KAYNAK REFERANSI */}
               <div className="shrink-0 h-[220px] border border-slate-200 rounded-lg bg-slate-800 flex flex-col overflow-hidden shadow-inner hidden xl:flex">
                 <div className="bg-slate-900 text-white text-xs p-2.5 truncate font-medium flex items-center justify-between">
                     <span>AI Kaynak Referansı</span>
@@ -971,9 +1098,6 @@ function App() {
           </div>
         )}
 
-        {/* ========================================== */}
-        {/* BÜYÜK DOKÜMAN OKUMA PENCERESİ (MODAL) */}
-        {/* ========================================== */}
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm transition-all duration-300">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -1017,6 +1141,49 @@ function App() {
                     <div className="text-sm font-bold">Dosya içeriği yüklenemedi!</div>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isSummaryModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm transition-all duration-300">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              
+              <div className="h-16 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="bg-purple-100 p-2 rounded-lg text-purple-600 shadow-sm border border-purple-200">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg">
+                      Yönetici Özeti
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium truncate max-w-md">{summaryDocTitle}</p>
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={() => setIsSummaryModalOpen(false)}
+                  className="p-2 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-500 hover:border-red-200 text-slate-500 rounded-xl transition-all shadow-sm"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[70vh] bg-white">
+                <div className="text-slate-700 font-medium whitespace-pre-wrap leading-relaxed">
+                  {summaryContent}
+                </div>
+              </div>
+              
+              <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end">
+                <button 
+                  onClick={() => setIsSummaryModalOpen(false)}
+                  className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-bold transition shadow-sm text-sm"
+                >
+                  Kapat
+                </button>
               </div>
             </div>
           </div>
