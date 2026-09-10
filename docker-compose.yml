@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # 1. FRONTEND SERVİSİ (React/Vite)
+  frontend:
+    build: ./frontend
+    container_name: knowledge_hub_ui
+    command: npm run dev -- --host   # Vite'ı Docker dışına açmak için --host şart eklendi
+    ports:
+      - "5173:5173"                  # Portlar Vite'a göre güncellendi
+    depends_on:
+      - web
+
+  # 2. BACKEND SERVİSİ (FastAPI)
+  web:
+    build: .
+    container_name: knowledge_hub_api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://postgres:dnz1234@db:5432/knowledge_hub
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./:/app
+
+  # 3. VERİTABANI SERVİSİ (PostgreSQL)
+  db:
+    image: postgres:17
+    container_name: knowledge_hub_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dnz1234
+      POSTGRES_DB: knowledge_hub
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

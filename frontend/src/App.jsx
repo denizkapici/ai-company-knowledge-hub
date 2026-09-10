@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'; 
-import { Home, MessageSquare, Settings, User, Plus, Send, UploadCloud, X, FileText, Lock, Mail, LogOut, ShieldCheck, Users, MessageCircle, Sparkles, Trash2 } from 'lucide-react';
+// YENİ: Edit2 ve Check ikonları eklendi
+import { Home, MessageSquare, Settings, User, Plus, Send, UploadCloud, X, FileText, Lock, Mail, LogOut, ShieldCheck, Users, MessageCircle, Sparkles, Trash2, Menu, Building, Edit2, Check } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 function App() {
   // --- STATE (DURUM) YÖNETİMİ ---
@@ -13,6 +15,9 @@ function App() {
   // EKRAN GÖRÜNÜMÜ KONTROLÜ
   const [activeView, setActiveView] = useState('chat'); 
   const [message, setMessage] = useState(''); 
+  
+  // YENİ: Mobil Menü State'i
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Sisteme giriş yapan kullanıcının rolü
   const [userRole, setUserRole] = useState(null); 
@@ -62,6 +67,14 @@ function App() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [registerMsg, setRegisterMsg] = useState({ type: '', text: '' });
   const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'employee', department_id: '' });
+
+  // ==========================================
+  // 🏢 DEPARTMAN YÖNETİMİ STATE'LERİ (YENİ)
+  // ==========================================
+  const [newDeptName, setNewDeptName] = useState('');
+  const [isAddingDept, setIsAddingDept] = useState(false);
+  const [editingDeptId, setEditingDeptId] = useState(null);
+  const [editDeptName, setEditDeptName] = useState('');
 
   // ==========================================
   // ✨ AI DOKÜMAN ÖZETLEME STATE'LERİ 
@@ -119,6 +132,7 @@ function App() {
   };
 
   const handleNewChat = async () => {
+    setIsMobileMenuOpen(false); // Yeni sohbete tıklayınca menüyü kapat
     try {
       const response = await fetchWithAuth('http://localhost:8000/api/v1/chat/sessions', { method: 'POST' });
       if (response.ok) {
@@ -141,6 +155,7 @@ function App() {
     setIsChatLoading(true);
     setReferenceData(null); 
     setReferencePdfUrl(null);
+    setIsMobileMenuOpen(false); // Sohbete tıklayınca mobilde menüyü kapat
 
     try {
       const response = await fetchWithAuth(`http://localhost:8000/api/v1/chat/sessions/${sessionId}/messages`);
@@ -351,6 +366,83 @@ function App() {
     }
   };
 
+  // ==========================================
+  // YENİ: DEPARTMAN CRUD İŞLEMLERİ 
+  // ==========================================
+  const handleAddDepartment = async (e) => {
+    e.preventDefault();
+    if (!newDeptName.trim()) return;
+    setIsAddingDept(true);
+    try {
+      const response = await fetchWithAuth('http://localhost:8000/departments/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newDeptName })
+      });
+      if (response.ok) { 
+        toast.success("Departman başarıyla oluşturuldu!"); 
+        setNewDeptName(''); 
+        fetchAdminData(); 
+      } else { 
+        toast.error("Departman eklenemedi."); 
+      }
+    } catch (e) { 
+      toast.error("Sunucuya ulaşılamadı."); 
+    } finally { 
+      setIsAddingDept(false); 
+    }
+  };
+
+  const handleUpdateDepartment = async (deptId) => {
+    if (!editDeptName.trim()) return;
+    try {
+      const response = await fetchWithAuth(`http://localhost:8000/departments/${deptId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editDeptName })
+      });
+      if (response.ok) { 
+        toast.success("Departman güncellendi!"); 
+        setEditingDeptId(null); 
+        fetchAdminData(); 
+      } else { 
+        toast.error("Departman güncellenemedi."); 
+      }
+    } catch (e) { 
+      toast.error("Sunucuya ulaşılamadı."); 
+    }
+  };
+
+  const confirmDeleteDept = (dep) => {
+    toast((t) => (
+      <div className="flex flex-col gap-3">
+        <span className="text-sm font-bold text-slate-800">"{dep.name}" departmanını silmek istediğinize emin misiniz?</span>
+        <div className="flex gap-2 justify-end">
+          <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition">
+            İptal
+          </button>
+          <button onClick={() => { toast.dismiss(t.id); executeDeleteDept(dep.id); }} className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition shadow-sm">
+            Evet, Sil
+          </button>
+        </div>
+      </div>
+    ), { duration: 6000, id: `delete-dept-${dep.id}` });
+  };
+
+  const executeDeleteDept = async (deptId) => {
+    try {
+      const response = await fetchWithAuth(`http://localhost:8000/departments/${deptId}`, { method: 'DELETE' });
+      if (response.ok) { 
+        toast.success("Departman başarıyla silindi!"); 
+        fetchAdminData(); 
+      } else { 
+        toast.error("Silinemedi. Bu departmana bağlı kullanıcı veya belgeler olabilir."); 
+      }
+    } catch (e) { 
+      toast.error("Sunucuya ulaşılamadı."); 
+    }
+  };
+
   const handleSummarizeDocument = async (doc, e) => {
     e.stopPropagation(); 
     const docId = doc.id || doc._id || doc.document_id;
@@ -417,16 +509,12 @@ function App() {
     }
   };
 
-  // =======================================================
-  // 🚀 DÜZELTME: MODAL (BÜYÜK EKRAN) DOSYA ÖNİZLEME
-  // =======================================================
   const handlePreviewDocument = async (doc) => {
     setPreviewDoc(doc); setPdfUrl(null); setIsPdfLoading(true); setIsModalOpen(true); 
     try {
       const response = await fetchWithAuth(`http://localhost:8000/documents/${doc.id || doc._id || doc.filename}/download`);
       if (response.ok) { 
         const blob = await response.blob(); 
-        // ✨ DÜZELTME: Backend'in gönderdiği orijinal dosya tipini kullan
         const mimeType = blob.type || 'application/pdf';
         const fileBlob = new Blob([blob], { type: mimeType });
         setPdfUrl(URL.createObjectURL(fileBlob)); 
@@ -469,9 +557,6 @@ function App() {
     }
   };
 
-  // =======================================================
-  // 🚀 DÜZELTME: SOHBET YANIT SİSTEMİ (SAĞ ALT REFERANS EKRANI)
-  // =======================================================
   const handleSendMessage = async () => {
     if (!message.trim() || !activeSessionId) return; 
     
@@ -546,7 +631,6 @@ function App() {
                      return res.blob();
                   })
                   .then(blob => {
-                    // ✨ DÜZELTME: Yanlış mimeType tahmini silindi. Direkt backend'den gelen orijinal tipi kullanıyoruz.
                     const mimeType = blob.type || 'application/pdf';
                     const fileBlob = new Blob([blob], { type: mimeType });
                     setReferencePdfUrl(URL.createObjectURL(fileBlob));
@@ -671,15 +755,24 @@ function App() {
       <Toaster position="top-right" />
       <div className="flex h-screen bg-white font-sans text-slate-800 overflow-hidden relative">
         
-        <div className="flex h-full border-r border-slate-200">
+        {/* YENİ: MOBİL ARKA PLAN KARARTMASI */}
+        {isMobileMenuOpen && (
+          <div 
+            className="md:hidden fixed inset-0 bg-slate-900/60 z-40 backdrop-blur-sm" 
+            onClick={() => setIsMobileMenuOpen(false)}
+          ></div>
+        )}
+
+        {/* YENİ: SOL MENÜ - Mobil uyumlu (fixed/relative geçişi) */}
+        <div className={`fixed md:relative z-50 flex h-full border-r border-slate-200 bg-white transition-transform duration-300 shadow-2xl md:shadow-none ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
           <div className="w-16 bg-brand-dark flex flex-col items-center py-6 gap-8 text-slate-400 shrink-0">
             <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-teal-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30 cursor-pointer hover:scale-105 transition-transform border border-slate-700 mb-4">
               <span className="font-black text-xl tracking-tighter">KH</span>
             </div>
-            <Home className="w-6 h-6 hover:text-white cursor-pointer transition-colors" />
             
+            {/* Navigasyonda menüyü mobilde kapatma eklendi */}
             <MessageSquare 
-              onClick={() => setActiveView('chat')} 
+              onClick={() => { setActiveView('chat'); setIsMobileMenuOpen(false); }} 
               className={`w-6 h-6 cursor-pointer transition-colors ${activeView === 'chat' ? 'text-white' : 'hover:text-white'}`} 
               title="Chat Ekranı"
             />
@@ -689,7 +782,7 @@ function App() {
             <div className="mt-auto pb-4 flex flex-col gap-6 items-center">
               {userRole === 'admin' && (
                 <User 
-                  onClick={() => setActiveView('admin')} 
+                  onClick={() => { setActiveView('admin'); setIsMobileMenuOpen(false); }} 
                   className={`w-6 h-6 cursor-pointer transition-colors ${activeView === 'admin' ? 'text-brand-blue bg-white rounded-full p-0.5' : 'hover:text-white'}`} 
                   title="Admin Paneli"
                 />
@@ -699,7 +792,12 @@ function App() {
           </div>
           
           <div className="w-64 bg-slate-50 flex flex-col shrink-0">
-            <div className="p-4 border-b border-slate-200 font-bold text-lg text-slate-800">Knowledge Hub</div>
+            <div className="p-4 border-b border-slate-200 font-bold text-lg text-slate-800 flex justify-between items-center">
+              Knowledge Hub
+              <button className="md:hidden text-slate-400 hover:text-slate-700" onClick={() => setIsMobileMenuOpen(false)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
             <div className="p-4">
               <button onClick={handleNewChat} className="w-full bg-brand-blue text-white rounded-lg py-2 flex items-center justify-center gap-2 font-medium hover:bg-blue-700 transition shadow-sm">
                 <Plus className="w-5 h-5" /> New Chat
@@ -739,25 +837,39 @@ function App() {
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col bg-white relative overflow-hidden">
+        <div className="flex-1 flex flex-col bg-white relative overflow-hidden w-full">
           
+          {/* YENİ: MOBİL İÇİN HAMBURGER MENÜ HEADER'I */}
+          <div className="md:hidden h-16 border-b border-slate-200 flex items-center justify-between px-4 shrink-0 bg-white">
+            <div className="font-bold text-lg flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-teal-500 rounded-lg flex items-center justify-center text-white text-xs font-black shadow-sm">KH</div>
+              <span className="text-slate-800">Knowledge Hub</span>
+            </div>
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)} 
+              className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+          </div>
+
           {activeView === 'chat' ? (
             
             <>
-              <div className="h-16 border-b border-slate-200 flex items-center px-6 font-bold text-lg text-slate-800 shrink-0">
+              <div className="h-16 border-b border-slate-200 flex items-center px-6 font-bold text-lg text-slate-800 shrink-0 hidden md:flex">
                  {activeSessionId ? (chatSessions.find(s => s.id === activeSessionId)?.title || "Chat") : "Chat"}
               </div>
               
-              <div className="flex-1 p-6 overflow-y-auto flex flex-col gap-6">
+              <div className="flex-1 p-4 md:p-6 overflow-y-auto flex flex-col gap-6">
                 {chatHistory.map((msg, index) => (
                   msg.role === 'user' ? (
                     <div key={index} className="flex justify-end">
-                      <div className="bg-slate-800 text-white p-4 rounded-2xl rounded-tr-sm max-w-2xl shadow-sm border border-slate-700">{msg.content}</div>
+                      <div className="bg-slate-800 text-white p-4 rounded-2xl rounded-tr-sm max-w-[85%] md:max-w-2xl shadow-sm border border-slate-700">{msg.content}</div>
                     </div>
                   ) : (
-                    <div key={index} className="flex justify-start gap-4">
+                    <div key={index} className="flex justify-start gap-3 md:gap-4">
                       <div className="w-8 h-8 rounded-full bg-brand-blue flex items-center justify-center text-white shrink-0 mt-1 shadow-sm"><MessageSquare className="w-4 h-4" /></div>
-                      <div className="bg-slate-50 p-4 rounded-2xl rounded-tl-sm max-w-2xl text-slate-800 shadow-sm border border-slate-200 whitespace-pre-wrap">{msg.content}</div>
+                      <div className="bg-slate-50 p-4 rounded-2xl rounded-tl-sm max-w-[85%] md:max-w-2xl text-slate-800 shadow-sm border border-slate-200 whitespace-pre-wrap">{msg.content}</div>
                     </div>
                   )
                 ))}
@@ -777,23 +889,23 @@ function App() {
                 <div ref={chatEndRef} />
               </div>
               
-              <div className="p-4 bg-white border-t border-slate-100 shrink-0">
-                <div className="max-w-4xl mx-auto flex items-center border border-slate-300 rounded-xl p-2 focus-within:border-brand-blue focus-within:ring-1 focus-within:ring-brand-blue transition bg-white shadow-sm">
+              <div className="p-3 md:p-4 bg-white border-t border-slate-100 shrink-0">
+                <div className="max-w-4xl mx-auto flex items-center border border-slate-300 rounded-xl p-1.5 md:p-2 focus-within:border-brand-blue focus-within:ring-1 focus-within:ring-brand-blue transition bg-white shadow-sm">
                   <input 
                     type="text" 
                     value={message} 
                     onChange={(e) => setMessage(e.target.value)} 
                     onKeyDown={handleKeyDown} 
                     placeholder={activeSessionId ? "Ask anything..." : "Lütfen yeni bir sohbet başlatın..."} 
-                    className="flex-1 outline-none px-3 bg-transparent text-slate-700 placeholder-slate-400 font-medium" 
+                    className="flex-1 outline-none px-2 md:px-3 bg-transparent text-slate-700 placeholder-slate-400 font-medium text-sm md:text-base" 
                     disabled={isChatLoading || !activeSessionId} 
                   />
                   <button 
                     onClick={handleSendMessage} 
                     disabled={!message.trim() || isChatLoading || !activeSessionId} 
-                    className="bg-brand-blue hover:bg-blue-700 disabled:bg-slate-300 text-white p-2.5 rounded-lg transition shadow-sm"
+                    className="bg-brand-blue hover:bg-blue-700 disabled:bg-slate-300 text-white p-2 md:p-2.5 rounded-lg transition shadow-sm shrink-0"
                   >
-                    <Send className="w-5 h-5" />
+                    <Send className="w-4 h-4 md:w-5 md:h-5" />
                   </button>
                 </div>
               </div>
@@ -802,26 +914,33 @@ function App() {
           ) : (
             
             <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-y-auto">
-              <div className="h-16 border-b border-slate-200 bg-white flex items-center px-6 font-bold text-lg text-slate-800 shrink-0 gap-2 shadow-sm">
+              <div className="h-16 border-b border-slate-200 bg-white flex items-center px-6 font-bold text-lg text-slate-800 shrink-0 gap-2 shadow-sm hidden md:flex">
                 <ShieldCheck className="w-6 h-6 text-brand-blue" />
                 Sistem Yönetimi (Admin Paneli)
               </div>
 
-              <div className="p-6 max-w-7xl mx-auto w-full grid grid-cols-1 xl:grid-cols-3 gap-6">
+              <div className="p-4 md:p-6 max-w-7xl mx-auto w-full grid grid-cols-1 xl:grid-cols-3 gap-6">
                 
-                <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[700px]">
+                {/* YENİ: ADMIN DASHBOARD GRAFİKLERİ BURAYA EKLENDİ */}
+                <div className="xl:col-span-3">
+                  <AdminDashboard />
+                </div>
+                
+                <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[600px] md:h-[700px]">
                   <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
                     <Users className="w-5 h-5 text-slate-500" />
                     <h3 className="font-bold text-slate-700">Mevcut Kullanıcılar</h3>
                   </div>
                   
                   <div className="flex-1 overflow-auto p-4">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse min-w-[600px]">
                       <thead>
                         <tr className="border-b-2 border-slate-200 text-sm text-slate-500">
                           <th className="pb-3 font-semibold px-2">ID</th>
                           <th className="pb-3 font-semibold px-2">Ad Soyad</th>
                           <th className="pb-3 font-semibold px-2">E-posta</th>
+                          {/* YENİ: Departman Sütunu */}
+                          <th className="pb-3 font-semibold px-2">Departman</th>
                           <th className="pb-3 font-semibold px-2">Yetki (Rol)</th>
                           <th className="pb-3 font-semibold px-2">Durum</th>
                           <th className="pb-3 font-semibold px-2 text-right">İşlem</th> 
@@ -829,7 +948,7 @@ function App() {
                       </thead>
                       <tbody className="text-sm">
                         {usersList.length === 0 ? (
-                          <tr><td colSpan="6" className="text-center py-8 text-slate-400">Henüz kullanıcı bulunmuyor.</td></tr>
+                          <tr><td colSpan="7" className="text-center py-8 text-slate-400">Henüz kullanıcı bulunmuyor.</td></tr>
                         ) : (
                           usersList.map((usr) => (
                             <tr key={usr.id} className="border-b border-slate-100 hover:bg-slate-50 transition group">
@@ -837,6 +956,13 @@ function App() {
                               <td className="py-3 px-2 font-bold text-slate-800">{usr.name}</td>
                               <td className="py-3 px-2 text-slate-600">{usr.email}</td>
                               
+                              {/* YENİ: Departman Verisi Eşleştiriliyor */}
+                              <td className="py-3 px-2">
+                                <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border border-slate-200">
+                                  {departments.find(d => d.id === usr.department_id)?.name || 'Atanmadı / Global'}
+                               </span>
+                              </td>
+
                               <td className="py-3 px-2">
                                 <select 
                                   value={usr.role} 
@@ -932,13 +1058,82 @@ function App() {
                   </form>
 
                 </div>
+
+                {/* =========================================================
+                    YENİ: DEPARTMAN YÖNETİMİ TABLOSU VE EKLEME FORMU
+                    ========================================================= */}
+                <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[350px]">
+                  <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
+                    <Building className="w-5 h-5 text-slate-500" />
+                    <h3 className="font-bold text-slate-700">Departman Yönetimi</h3>
+                  </div>
+                  
+                  <div className="flex-1 overflow-auto p-4">
+                    <table className="w-full text-left border-collapse min-w-[500px]">
+                      <thead>
+                        <tr className="border-b-2 border-slate-200 text-sm text-slate-500">
+                          <th className="pb-3 font-semibold px-2 w-16">ID</th>
+                          <th className="pb-3 font-semibold px-2">Departman Adı</th>
+                          <th className="pb-3 font-semibold px-2 text-right">İşlem</th> 
+                        </tr>
+                      </thead>
+                      <tbody className="text-sm">
+                        {departments.length === 0 ? (
+                          <tr><td colSpan="3" className="text-center py-8 text-slate-400">Henüz departman bulunmuyor.</td></tr>
+                        ) : (
+                          departments.map((dep) => (
+                            <tr key={dep.id} className="border-b border-slate-100 hover:bg-slate-50 transition group">
+                              <td className="py-3 px-2 font-medium text-slate-500">#{dep.id}</td>
+                              <td className="py-3 px-2">
+                                {editingDeptId === dep.id ? (
+                                  <input 
+                                    type="text" 
+                                    value={editDeptName} 
+                                    onChange={(e) => setEditDeptName(e.target.value)} 
+                                    className="w-full px-2 py-1 border border-brand-blue rounded-md outline-none text-sm font-bold text-slate-800"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <span className="font-bold text-slate-800">{dep.name}</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-2 text-right">
+                                {editingDeptId === dep.id ? (
+                                  <button onClick={() => handleUpdateDepartment(dep.id)} className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded transition" title="Kaydet"><Check className="w-4 h-4" /></button>
+                                ) : (
+                                  <button onClick={() => { setEditingDeptId(dep.id); setEditDeptName(dep.name); }} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded transition" title="Düzenle"><Edit2 className="w-4 h-4" /></button>
+                                )}
+                                <button onClick={() => confirmDeleteDept(dep)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition ml-1" title="Sil"><Trash2 className="w-4 h-4" /></button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 h-fit">
+                  <h3 className="font-bold text-slate-700 text-lg mb-5 border-b border-slate-100 pb-3">Yeni Departman Ekle</h3>
+                  <form onSubmit={handleAddDepartment} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Departman Adı</label>
+                      <input type="text" required value={newDeptName} onChange={(e) => setNewDeptName(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-blue bg-slate-50 text-sm font-medium" placeholder="Örn: İnsan Kaynakları" />
+                    </div>
+                    <button type="submit" disabled={isAddingDept || !newDeptName.trim()} className={`w-full text-white font-bold py-3 mt-4 rounded-xl transition shadow-md flex justify-center items-center ${isAddingDept || !newDeptName.trim() ? 'bg-brand-blue/60 cursor-not-allowed' : 'bg-brand-blue hover:bg-blue-700'}`}>
+                      {isAddingDept ? 'Ekleniyor...' : 'Departman Ekle'}
+                    </button>
+                  </form>
+                </div>
+
               </div>
             </div>
           )}
         </div>
 
         {activeView === 'chat' && (
-          <div className="w-80 border-l border-slate-200 bg-white flex flex-col shrink-0 relative z-10">
+          // YENİ: Mobilde sağ paneli tamamen gizliyoruz (hidden xl:flex), böylece chat ekranı ezilmiyor
+          <div className="w-80 border-l border-slate-200 bg-white flex-col shrink-0 relative z-10 hidden xl:flex">
             
             <div className="h-16 border-b border-slate-200 flex items-center justify-between px-5 font-bold text-lg text-slate-800 shrink-0">
               Documents & Sources
@@ -1098,6 +1293,7 @@ function App() {
           </div>
         )}
 
+        {/* MODALLER (Doküman Önizleme ve Özetleme modalleri eskisi gibi devam ediyor) */}
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm transition-all duration-300">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -1193,5 +1389,84 @@ function App() {
     </>
   );
 }
+
+// ==========================================
+// 📊 YENİ: ADMİN DASHBOARD BİLEŞENLERİ 
+// (App fonksiyonunun dışında tanımlandı, mevcut yapıyı bozmaz)
+// ==========================================
+const StatCard = ({ title, value, icon, color }) => (
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center gap-4 transition-transform hover:-translate-y-1">
+    <div className={`${color} text-white p-4 rounded-lg shadow-inner`}>
+      {icon}
+    </div>
+    <div>
+      <p className="text-sm font-medium text-slate-500">{title}</p>
+      <h3 className="text-2xl font-bold text-slate-800">{value !== undefined ? value : '...'}</h3>
+    </div>
+  </div>
+);
+
+const AdminDashboard = () => {
+  const [stats, setStats] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  // Token'ı localStorage'dan doğrudan çekiyoruz ki fetchWithAuth prop'una ihtiyaç olmasın
+  const token = localStorage.getItem('access_token'); 
+
+  React.useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/users/stats', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setStats(data);
+        }
+      } catch (error) {
+        console.error("İstatistikler çekilemedi:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (token) loadStats();
+  }, [token]);
+
+  if (loading) return <div className="p-8 text-slate-500 font-semibold animate-pulse">Analitik Verileri Yükleniyor...</div>;
+  if (!stats) return <div className="p-8 text-red-500">Veri çekilirken hata oluştu veya yetkiniz yok.</div>;
+
+  return (
+    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-sm w-full">
+      <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+        📊 Sistem Analitiği
+      </h2>
+
+      {/* Üst Kısım: Özet Kartları */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Toplam Kullanıcı" value={stats.summary?.total_users} icon={<Users size={24} />} color="bg-blue-500" />
+        <StatCard title="Yüklü Belgeler" value={stats.summary?.total_docs} icon={<FileText size={24} />} color="bg-indigo-500" />
+        <StatCard title="Yapay Zeka Sohbeti" value={stats.summary?.total_chats} icon={<MessageSquare size={24} />} color="bg-green-500" />
+        <StatCard title="Departmanlar" value={stats.summary?.total_departments} icon={<Building size={24} />} color="bg-purple-500" />
+      </div>
+
+      {/* Alt Kısım: Grafik */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mt-8">
+        <h3 className="text-base font-semibold text-slate-700 mb-6">Departman Bazlı Kullanıcı Dağılımı</h3>
+        <div className="h-72 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stats.chart_data}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+              <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip cursor={{fill: '#f1f5f9'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+              <Bar dataKey="kullaniciSayisi" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default App;

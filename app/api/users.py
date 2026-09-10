@@ -51,7 +51,7 @@ def read_users(
 
 
 # ==========================================
-# 🗑️ YENİ: KULLANICI SİLME ENDPOINT'İ
+# 🗑️ KULLANICI SİLME ENDPOINT'İ
 # ==========================================
 @router.delete(
     "/{user_id}",
@@ -82,7 +82,7 @@ def delete_user(
 
 
 # ==========================================
-# 👑 YENİ: KULLANICI YETKİSİ (ROLE) GÜNCELLEME
+# 👑 KULLANICI YETKİSİ (ROLE) GÜNCELLEME
 # ==========================================
 @router.put(
     "/{user_id}/role",
@@ -107,7 +107,7 @@ def update_user_role(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
 
-    # 3. Geçerli rol kontrolü (Hatalı bir kelime yazılmasını engeller)
+    # 3. Geçerli rol kontrolü
     valid_roles = ["employee", "manager", "admin"]
     if role_data.role not in valid_roles:
         raise HTTPException(
@@ -121,3 +121,50 @@ def update_user_role(
     db.refresh(user)
     
     return user
+
+
+# ==========================================
+# 📊 YENİ: SİSTEM İSTATİSTİKLERİ (DASHBOARD)
+# ==========================================
+@router.get(
+    "/stats",
+    summary="Dashboard için sistem istatistiklerini getir (Yalnızca Admin)"
+)
+def get_admin_dashboard_stats(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(["admin"]))
+):
+    """
+    Tüm sistem verilerini toparlayıp React arayüzündeki Dashboard grafikleri 
+    için JSON olarak döner.
+    """
+    # Tablolardaki toplam kayıt sayılarını alıyoruz
+    total_users = db.query(models.User).count()
+    
+    # DİKKAT: Aşağıdaki modeller senin 'models.py' dosyasında nasıl geçiyorsa öyle kalmalı.
+    # Örn: Eğer ChatSession ismi farklıysa (örn: ChatHistory), onu değiştirmelisin.
+    total_docs = db.query(models.Document).count()
+    total_chats = db.query(models.ChatSession).count()
+    total_departments = db.query(models.Department).count()
+
+    # Departmanlara göre kullanıcı dağılımı (Grafik Verisi)
+    department_stats = []
+    departments = db.query(models.Department).all()
+    
+    for dept in departments:
+        # Bu departmana ait kaç kullanıcı var buluyoruz
+        user_count = db.query(models.User).filter(models.User.department_id == dept.id).count()
+        department_stats.append({
+            "name": dept.name,
+            "kullaniciSayisi": user_count
+        })
+
+    return {
+        "summary": {
+            "total_users": total_users,
+            "total_docs": total_docs,
+            "total_chats": total_chats,
+            "total_departments": total_departments
+        },
+        "chart_data": department_stats
+    }
